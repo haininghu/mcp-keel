@@ -1,0 +1,221 @@
+# =============================================================================
+# mcp-keel - example configuration (v1 proposal)
+# =============================================================================
+#
+# mcp-keel is a policy-governed Model Context Protocol (MCP) server that gives
+# an AI agent read-only access to Kubernetes clusters. In v1 only the "get" and
+# "list" verbs exist. The server runs locally and speaks MCP over stdio.
+#
+# Authorization is DENY BY DEFAULT and uses a firewall-style rule model:
+#
+#   - A rule matches a request when its scope (namespaces; the literal "" selects
+#     cluster-scoped resources) matches AND one of its capabilities matches the
+#     requested resource:verb AND that capability's filters pass.
+#   - Rules are evaluated in order; the FIRST matching rule wins.
+#   - effect: allow grants; effect: deny denies. If no rule matches, access is
+#     denied.
+#   - A deny rule may list capabilities; with none it denies EVERY capability in
+#     its scope.
+#   - A filter that does not pass means the rule does not apply (evaluation
+#     continues). Exclusions are therefore written as deny rules placed BEFORE
+#     broader allow rules.
+#   - "*" as a VERB is allowed only on deny rules. "*" as a RESOURCE is
+#     effect-dependent: on an allow rule it excludes subresources and the
+#     built-in sensitive set; on a deny rule it matches everything.
+#
+# Capability form: "<resource>:<verb>", optionally with a filter mapping:
+#
+#   core/pods:get            core resource "pods", verb "get"
+#   apps/deployments:list    grouped resource
+#   core/pods/log:get        subresource (never matched by an allow "*")
+#   "*:get"                  everything an allow wildcard may reach
+#                            (never secrets, RBAC or subresources)
+#   "*:*"                    all resources and verbs (deny only, total)
+#
+# An unqualified name that matches more than one group is denied. Write a core
+# resource as "core/..." when its name also exists elsewhere, for example
+# "pods"/"nodes" (metrics.k8s.io) or "events" (events.k8s.io).
+#
+# Verbs in v1: get, list. Resource aliases, singular forms and case are
+# canonicalised through the cluster's discovery before matching, so a deny rule
+# cannot be bypassed with "deploy" or "Deployment".
+#
+# Configuration is parsed strictly: an unknown key is an error, so a typo can
+# never silently produce a different rule. The file is loaded from -config
+# (default configs/config.yaml) or $MCP_KEEL_CONFIG.
+#
+# Copy this file to configs/config.yaml and adjust. The real config is
+# git-ignored.
+# =============================================================================
+
+version: 1
+
+server:
+  name: mcp-keel
+  log_level: info                  # debug | info | warn | error (default: info)
+  request_timeout: 30s             # bound for each cluster request
+  discovery_timeout: 10s           # bound for discovery calls
+  discovery_cache_ttl: 10m         # discovery cache per (provider, context); 0 disables
+  qps: 20                          # client-go rate limit (its default of 5 is too low)
+  burst: 50
+  max_list_items: 500              # hard cap; a tool's "limit" is clamped to it
+  max_object_bytes: 1048576        # 1 MiB; larger objects are truncated and flagged
+  max_response_bytes: 8388608      # 8 MiB; bounds the whole serialized response
+
+  # Default kubeconfig when a provider does not set its own. Precedence:
+  #   provider.kubeconfig > server.kubeconfig > $KUBECONFIG > ~/.kube/config
+  # A kubeconfig is TRUSTED configuration and is never supplied by a tool call.
+  # It may contain exec credential plugins, which execute arbitrary programs.
+  kubeconfig: "${HOME}/.kube/config"
+
+  # Extra resources that the "*" wildcard must never match, on top of the
+  # built-in sensitive set (canonical names; core has no prefix):
+  #   secrets, serviceaccounts, configmaps,
+  #   rbac.authorization.k8s.io/roles, rbac.authorization.k8s.io/rolebindings,
+  #   rbac.authorization.k8s.io/clusterroles,
+  #   rbac.authorization.k8s.io/clusterrolebindings
+  # Subresources are never matched by "*" regardless. Entries can only be ADDED,
+  # never removed. Additional entries are canonicalised per request, so use the
+  # canonical form (group-qualified for non-core resources).
+  additional_sensitive_resources:
+    - autoscaling/horizontalpodautoscalers
+
+  # Optional namespace marker: a label on a Namespace that acts as a
+  # capability-level default-deny overlay - the Kubernetes analogue of
+  # mcp-forj's ".noai". Disabled by default. When enabled, a non-exempt
+  # capability is denied for every object in a marked namespace. Individual
+  # capabilities opt out with "namespace_marker: allow" (see below).
+  namespace_marker:
+    enabled: false
+    label: mcp-keel.io/noai
+
+providers:
+  # ---------------------------------------------------------------------------
+  # A group of test clusters. "contexts" selects the kubeconfig contexts that
+  # belong to this provider (globs on the CONTEXT name, not the cluster name).
+  # ---------------------------------------------------------------------------
+  - name: test-clusters
+    # kubeconfig: /etc/mcp-keel/test.kubeconfig   # optional; falls back to server.kubeconfig
+    # A LITERAL context must exist in the kubeconfig (startup error otherwise);
+    # a glob that matches nothing only warns. The values here are placeholders.
+    contexts: ["*test*", "dev-play-cluster"]
+    policy_read: false                          # default; see "self-inspect" below
+    rules:
+      # Deny everything in the test-secrets namespace. No capabilities means
+      # "every capability"; a deny rule denies outright.
+      - namespaces: ["test-secrets"]
+        effect: deny
+
+      # Forbid every operation on objects carrying the "noai" label. This is the
+      # DRY exclusion mechanism: one deny rule instead of an exclude on every
+      # allow capability. It must come before the broad allow rules below.
+      - namespaces: ["test-*"]
+        effect: deny
+        capabilities:
+          - "*:*":
+              labels:
+                require: ["noai"]     # the object must carry this label
+
+      # Read pods, deployments, logs and (explicitly) secrets, in test namespaces.
+      # "*" never reaches secrets, RBAC objects, service accounts, config maps or
+      # subresources - those must always be named explicitly.
+      - namespaces: ["test-*", "namespace-a"]
+        effect: allow
+        capabilities:
+          - core/pods:get
+          - core/pods:list
+          - apps/deployments:get
+          - apps/deployments:list
+          - core/pods/log:get              # subresource: explicit, never granted by "*"
+          - secrets:get               # sensitive: only by explicit naming
+          - "*:get"
+          - "*:list"
+
+      # Positive scoping: only frontend pods, matched by name.
+      - namespaces: ["test-frontend"]
+        effect: allow
+        capabilities:
+          - core/pods:get:
+              names:
+                include: ["frontend-*"]
+                exclude: ["*-debug"]
+          - core/pods:list:
+              names:
+                include: ["frontend-*"]
+
+  # ---------------------------------------------------------------------------
+  # All prod and int clusters. "["*prod*", "*int*"]" is convenient but loose:
+  # it also matches names such as "nonprod" or "preprod". Prefer anchored
+  # patterns like "prod-*" when you can.
+  # ---------------------------------------------------------------------------
+  - name: prod-and-int
+    contexts: ["*prod*", "*int*"]
+    # Client settings may be overridden per provider (they default to server.*).
+    qps: 50
+    burst: 100
+    request_timeout: 60s
+    discovery_cache_ttl: 5m
+    rules:
+      # Deny every operation on deployments in these clusters.
+      - namespaces: ["*"]
+        effect: deny
+        capabilities:
+          - "apps/deployments:*"      # "*" verb is allowed on deny rules
+
+      # Allow pods that are managed by the platform team. The label filter is
+      # per capability; for a shared exclusion use a deny rule instead.
+      - namespaces: ["*"]
+        effect: allow
+        capabilities:
+          - core/pods:get:
+              labels:
+                require: ["managed-by=platform"]
+          - core/pods:list:
+              labels:
+                require: ["managed-by=platform"]
+
+  # ---------------------------------------------------------------------------
+  # A single cluster, selected by its exact context name.
+  # ---------------------------------------------------------------------------
+  - name: single-cluster
+    contexts: ["xxx"]
+    rules:
+      - namespaces: ["playground", "sandbox-*"]
+        effect: allow
+        capabilities:
+          - "*:get"
+          - "*:list"
+          - core/pods/log:get
+
+      # Cluster-scoped resources use the "" namespace marker. "*" never matches
+      # "", so a namespace wildcard can never leak cluster-scoped access.
+      - namespaces: [""]
+        effect: allow
+        capabilities:
+          - core/nodes:get
+          - core/nodes:list
+          - namespaces:get
+          - namespaces:list
+
+  # ---------------------------------------------------------------------------
+  # Policy introspection. A provider with "policy_read: true" lets the agent
+  # call list_configured_rules and list_clusters for it. This discloses the
+  # CONFIGURED rules and context names only, never effective access.
+  # ---------------------------------------------------------------------------
+  - name: self-inspect
+    contexts: ["*"]
+    policy_read: true
+    rules: []                   # no data access; introspection only
+
+# -----------------------------------------------------------------------------
+# Optional: namespace-marker exemption, using the compact capability-filter form.
+# Only meaningful when server.namespace_marker.enabled is true. A capability may
+# be written as a single-key mapping to attach a filter; "namespace_marker:
+# allow" exempts that capability from the marker check (all other capabilities
+# stay denied in a marked namespace).
+#
+#   capabilities:
+#     - core/pods:get:
+#         namespace_marker: allow
+#     - core/pods:list            # not exempt: denied in a marked namespace
+# -----------------------------------------------------------------------------
