@@ -9,6 +9,7 @@ package kube
 import (
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -100,6 +101,31 @@ func (r *Registry) Cluster(providerName, contextName string) (*Cluster, error) {
 	}
 	p.clusters[contextName] = cluster
 	return cluster, nil
+}
+
+// Contexts returns the concrete context names present in the provider's
+// kubeconfig that match its configured contexts globs, sorted ascending. It
+// reads the kubeconfig through the same loading rules as Cluster and returns
+// only names; kubeconfig contents, server URLs and credentials are never
+// exposed. A glob with no match contributes nothing; an unreadable kubeconfig
+// is an error wrapping the load failure.
+func (r *Registry) Contexts(providerName string) ([]string, error) {
+	p, ok := r.providers[providerName]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrUnknownProvider, providerName)
+	}
+	raw, err := p.rules.Load()
+	if err != nil {
+		return nil, fmt.Errorf("provider %q: load kubeconfig: %w", providerName, err)
+	}
+	names := make([]string, 0, len(raw.Contexts))
+	for name := range raw.Contexts {
+		if p.matchesContext(name) {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names, nil
 }
 
 // matchesContext reports whether name is selected by one of the provider's

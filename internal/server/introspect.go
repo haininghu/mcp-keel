@@ -56,10 +56,12 @@ type listConfiguredRulesOutput struct {
 	Providers []configuredProvider `json:"providers"`
 }
 
-// clusterProvider names one provider and its configured context patterns.
+// clusterProvider names one provider with its configured context patterns and
+// the concrete kubeconfig contexts that match them.
 type clusterProvider struct {
-	Provider string   `json:"provider"`
-	Contexts []string `json:"contexts"`
+	Provider        string   `json:"provider"`
+	ContextPatterns []string `json:"context_patterns"`
+	Contexts        []string `json:"contexts"`
 }
 
 // listClustersOutput is the list_clusters envelope.
@@ -88,15 +90,33 @@ func (s *Server) handleListConfiguredRules(_ context.Context, _ *mcp.CallToolReq
 	return jsonResult(out)
 }
 
-// handleListClusters reports the provider names and their configured context
-// patterns for providers that opt in with policy_read: true, sorted by name
-// (method spec list_clusters).
+// handleListClusters reports the provider names, their configured context
+// patterns and the concrete kubeconfig contexts matching those patterns, for
+// providers that opt in with policy_read: true. Output is sorted by provider
+// name. Only context names are exposed, never kubeconfig contents (method spec
+// list_clusters).
 func (s *Server) handleListClusters(_ context.Context, _ *mcp.CallToolRequest, _ listClustersInput) (*mcp.CallToolResult, any, error) {
 	out := listClustersOutput{Providers: []clusterProvider{}}
 	for _, name := range s.policyReadProviderNames() {
 		provider := s.providers[name]
-		contexts := append([]string{}, provider.Contexts...)
-		out.Providers = append(out.Providers, clusterProvider{Provider: name, Contexts: contexts})
+		patterns := append([]string{}, provider.Contexts...)
+
+		contexts, err := s.registry.Contexts(name)
+		if err != nil {
+			// The raw error can carry kubeconfig paths, so it is never logged
+			// (ADR 0007); the provider identifies the failure.
+			s.logger.Warn("reading kubeconfig contexts failed; returning no contexts",
+				"provider", name)
+			contexts = []string{}
+		}
+		if contexts == nil {
+			contexts = []string{}
+		}
+		out.Providers = append(out.Providers, clusterProvider{
+			Provider:        name,
+			ContextPatterns: patterns,
+			Contexts:        contexts,
+		})
 	}
 	return jsonResult(out)
 }

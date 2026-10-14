@@ -618,6 +618,10 @@ func TestEndToEnd(t *testing.T) {
 		}
 		providers, _ := clusters["providers"].([]any)
 		entry, _ := providers[0].(map[string]any)
+		patterns := stringSlice(t, entry["context_patterns"])
+		if len(patterns) != 1 || patterns[0] != contextName {
+			t.Fatalf("inspect context_patterns = %v, want [%s]", patterns, contextName)
+		}
 		contexts := stringSlice(t, entry["contexts"])
 		if len(contexts) != 1 || contexts[0] != contextName {
 			t.Fatalf("inspect contexts = %v, want [%s]", contexts, contextName)

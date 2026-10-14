@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -180,4 +181,33 @@ func (h *recordingHandler) hasWarn() bool {
 		}
 	}
 	return false
+}
+
+func TestRegistryContexts(t *testing.T) {
+	path := writeKubeconfig(t)
+	registry, err := NewRegistry(testConfig(path, []string{"prod-*", "dev-ctx", "staging-*"}), slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+
+	got, err := registry.Contexts("prod")
+	if err != nil {
+		t.Fatalf("Contexts: %v", err)
+	}
+	want := []string{"dev-ctx", "prod-ctx"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Contexts = %v, want %v", got, want)
+	}
+
+	if _, err := registry.Contexts("nope"); !errors.Is(err, ErrUnknownProvider) {
+		t.Fatalf("Contexts(unknown) error = %v, want ErrUnknownProvider", err)
+	}
+
+	// An unreadable kubeconfig is reported as an error and never returns names.
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove kubeconfig: %v", err)
+	}
+	if _, err := registry.Contexts("prod"); err == nil {
+		t.Fatal("expected an error for an unreadable kubeconfig")
+	}
 }

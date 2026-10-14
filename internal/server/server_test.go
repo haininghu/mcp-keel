@@ -128,8 +128,10 @@ func (f *fakeCluster) NamespaceMarked(_ context.Context, namespace, _ string) (b
 }
 
 type fakeRegistry struct {
-	cluster Cluster
-	err     error
+	cluster     Cluster
+	err         error
+	contexts    map[string][]string
+	contextsErr map[string]error
 }
 
 func (r fakeRegistry) Cluster(_, _ string) (Cluster, error) {
@@ -137,6 +139,13 @@ func (r fakeRegistry) Cluster(_, _ string) (Cluster, error) {
 		return nil, r.err
 	}
 	return r.cluster, nil
+}
+
+func (r fakeRegistry) Contexts(provider string) ([]string, error) {
+	if err, ok := r.contextsErr[provider]; ok {
+		return nil, err
+	}
+	return r.contexts[provider], nil
 }
 
 // --- harness -------------------------------------------------------------
@@ -713,7 +722,16 @@ func TestListClustersGatedByPolicyRead(t *testing.T) {
 			{Name: "a-visible", Contexts: []string{"a-*", "c-*"}, PolicyRead: true},
 		},
 	}
-	env := newTestEnv(t, cfg, baseCluster())
+	registry := fakeRegistry{
+		contexts: map[string][]string{
+			"a-visible": {"a-1", "c-2"},
+			"b-visible": {},
+		},
+		contextsErr: map[string]error{
+			"b-visible": errors.New("kubeconfig unreadable"),
+		},
+	}
+	env := newTestEnvRegistry(t, cfg, registry)
 
 	out := env.callOK("list_clusters", nil)
 	providers, _ := out["providers"].([]any)
@@ -724,9 +742,27 @@ func TestListClustersGatedByPolicyRead(t *testing.T) {
 	if first["provider"] != "a-visible" {
 		t.Errorf("first provider = %v, want a-visible", first["provider"])
 	}
+	patterns, _ := first["context_patterns"].([]any)
+	if len(patterns) != 2 || patterns[0] != "a-*" || patterns[1] != "c-*" {
+		t.Errorf("context_patterns = %v, want [a-* c-*]", patterns)
+	}
 	contexts, _ := first["contexts"].([]any)
-	if len(contexts) != 2 || contexts[0] != "a-*" || contexts[1] != "c-*" {
-		t.Errorf("contexts = %v", contexts)
+	if len(contexts) != 2 || contexts[0] != "a-1" || contexts[1] != "c-2" {
+		t.Errorf("contexts = %v, want [a-1 c-2]", contexts)
+	}
+
+	// An unreadable kubeconfig keeps the provider but yields no contexts.
+	second, _ := providers[1].(map[string]any)
+	if second["provider"] != "b-visible" {
+		t.Errorf("second provider = %v, want b-visible", second["provider"])
+	}
+	secondContexts, ok := second["contexts"].([]any)
+	if !ok || len(secondContexts) != 0 {
+		t.Errorf("contexts = %v, want [] for an unreadable kubeconfig", second["contexts"])
+	}
+	secondPatterns, _ := second["context_patterns"].([]any)
+	if len(secondPatterns) != 1 || secondPatterns[0] != "b-*" {
+		t.Errorf("context_patterns = %v, want [b-*]", secondPatterns)
 	}
 }
 

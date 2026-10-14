@@ -58,6 +58,9 @@ type ClusterRegistry interface {
 	// Cluster returns the cluster for provider and context, or an error that
 	// wraps kube.ErrUnknownProvider or kube.ErrUnknownContext.
 	Cluster(provider, context string) (Cluster, error)
+	// Contexts returns the concrete kubeconfig context names of a provider that
+	// match its configured context globs, sorted. It exposes only names.
+	Contexts(provider string) ([]string, error)
 }
 
 // kubeRegistry adapts a *kube.Registry to ClusterRegistry.
@@ -75,6 +78,11 @@ func (k kubeRegistry) Cluster(provider, contextName string) (Cluster, error) {
 		return nil, err
 	}
 	return cluster, nil
+}
+
+// Contexts returns the provider's concrete kubeconfig context names.
+func (k kubeRegistry) Contexts(provider string) ([]string, error) {
+	return k.registry.Contexts(provider)
 }
 
 // policyKey identifies a compiled policy. Policies are canonicalised per
