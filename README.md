@@ -40,7 +40,7 @@ Architecture decisions and per-tool specs live under [`ai/`](ai/README.md).
 | **Rule**       | Scope (`namespaces`, `""` = cluster-scoped) + `effect` + capabilities (each with filters).          |
 | **Namespace marker** | Optional label-based default-deny overlay (the analogue of mcp-forj's `.noai`).            |
 
-## Tools (planned)
+## Tools
 
 | Tool                    | Capability    | Description                                                     |
 |-------------------------|---------------|-----------------------------------------------------------------|
@@ -122,6 +122,44 @@ Key rules:
 
 - Go 1.27+
 - A kubeconfig with contexts for the clusters you want to expose
+
+## Build
+
+```bash
+make build        # -> bin/mcp-keel
+make test         # unit tests
+make test-e2e     # end-to-end smoke tests against a real API server (envtest)
+make cover        # coverage report
+```
+
+## Run
+
+```bash
+cp configs/config.example.yaml configs/config.yaml
+# edit configs/config.yaml: set kubeconfig/contexts and your rules
+./bin/mcp-keel -config configs/config.yaml
+```
+
+The server speaks MCP over stdio; all logging goes to stderr. `-config` defaults to
+`configs/config.yaml`, and the `MCP_KEEL_CONFIG` environment variable overrides that default path.
+
+### Use with opencode
+
+Register the server as a local MCP server in `opencode.json` (absolute paths are recommended):
+
+```json
+{
+  "mcp": {
+    "mcp-keel": {
+      "type": "local",
+      "command": ["/path/to/bin/mcp-keel", "-config", "/path/to/configs/config.yaml"],
+      "enabled": true
+    }
+  }
+}
+```
+
+opencode loads its configuration once at startup, so restart it after editing.
 
 ## Docs
 
