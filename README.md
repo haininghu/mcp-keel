@@ -17,6 +17,25 @@ See [`AGENTS.md`](AGENTS.md) for the repo map, conventions and the security inva
 [`configs/config.example.yaml`](configs/config.example.yaml) for a fully commented example configuration.
 Architecture decisions and per-tool specs live under [`ai/`](ai/README.md).
 
+## Quick start
+
+```bash
+# 1. build the server (or use a released binary)
+make build                       # -> bin/mcp-keel
+
+# 2. create your config from the documented example
+cp configs/config.example.yaml configs/config.yaml
+
+# 3. edit configs/config.yaml: set kubeconfig, contexts and your rules
+
+# 4. register bin/mcp-keel in your MCP host (see "Use with opencode" below)
+```
+
+`configs/config.yaml` is git-ignored and must never be committed. The server
+speaks MCP over stdio only and logs to stderr; there is no HTTP listener and no
+in-cluster service account. Once registered, ask the host to call the `get` or
+`list` tools, for example list pods in a namespace your policy allows.
+
 ## Scope of v1
 
 - **Verbs:** `get` and `list` only.
@@ -181,6 +200,42 @@ opencode loads its configuration once at startup, so restart it after editing.
 - [`ai/threat-model.md`](ai/threat-model.md) — assets, adversary, trust boundaries and mitigations.
 - [`ai/testing.md`](ai/testing.md) — test layers and the bypass matrix.
 - [`configs/config.example.yaml`](configs/config.example.yaml) — documented example configuration.
+
+## Commit conventions
+
+This project uses [Conventional Commits](https://www.conventionalcommits.org/). Format:
+
+```
+<type>(<optional scope>): <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+Common types:
+
+| Type       | Purpose                                                 |
+|------------|---------------------------------------------------------|
+| `feat`     | New feature                                             |
+| `fix`      | Bug fix                                                 |
+| `docs`     | Documentation only                                      |
+| `refactor` | Code change that neither fixes a bug nor adds a feature |
+| `test`     | Adding or correcting tests                              |
+| `chore`    | Build, tooling, dependencies, ignore files              |
+
+Examples:
+
+```
+feat(policy): support name filters on deny capabilities
+fix(kube): fail closed when discovery is partial
+docs(config): document the namespace marker
+```
+
+Use the imperative mood, lowercase after the colon, and no trailing period.
+Breaking changes are marked with `!` (`feat(policy)!: ...`) and a
+`BREAKING CHANGE:` footer. An authorization change updates the matching ADR
+under [`ai/adr/`](ai/adr/) in the same commit.
 
 ## License
 

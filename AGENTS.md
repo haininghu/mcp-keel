@@ -91,7 +91,10 @@ Equivalent direct commands: `go build ./...`, `go vet ./...`, `go test ./...`,
 - Markdown lines are at most **120 characters**.
 - No secrets in the repo. `configs/config.yaml` and `opencode.json` are git-ignored; `.aiignore` additionally
   keeps secrets, build artifacts and IDE state out of AI tooling context.
-- Small, focused commits with a `type:` prefix: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`.
+- Small, focused commits following [Conventional Commits](https://www.conventionalcommits.org/):
+  `<type>(<scope>): <description>` with types `feat`, `fix`, `refactor`, `docs`, `test`, `chore`; imperative
+  mood, lowercase after the colon, no trailing period. Mark breaking changes with `!` and a
+  `BREAKING CHANGE:` footer. See `README.md` for examples; an authorization change updates the ADR too.
 - Prefer Go **1.27 stdlib** helpers: `slices`, `maps`, `min`/`max`, `errors.AsType`, `strings.Cut`.
 - Do not add dependencies without a clear need. Planned deps: the MCP SDK, `doublestar/v4`, `yaml.v3`
   and `k8s.io/client-go` (+ `apimachinery`).
