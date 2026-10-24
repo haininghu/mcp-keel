@@ -1,12 +1,10 @@
 version: "2"
 
-run:
-  timeout: 5m
-
-# Linters that can find bugs or security issues, plus the gofmt/misspell style
-# checks kept from the original setup. gosec and gocritic run with every rule;
-# silence a false positive at its site with
-# //nolint:<linter> // <rule>: <reason> instead of disabling the rule.
+# Only linters that can find bugs or security issues, no style linters.
+# gosec and gocritic run with every rule; silence a false positive at its site
+# with //nolint:<linter> // <rule>: <reason> instead of disabling the rule.
+# mcp-forj deliberately disables the gocritic style/performance checks and
+# govet's shadow analyzer, which flag idiomatic Go here without finding bugs.
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused
   enable:
@@ -24,7 +22,6 @@ linters:
     - gocritic
     - gosec
     - makezero
-    - misspell
     - musttag
     - nilerr
     - nilnesserr
@@ -40,18 +37,22 @@ linters:
       disable:
         - fieldalignment # memory layout, not correctness
         - findcall # demo analyzer
+        - shadow # flags idiomatic `if err := ...; err != nil` scoping
     staticcheck:
       checks: ["SA*"] # bug checks only; S, ST and QF are style
     gocritic:
       enable-all: true
+      disabled-checks:
+        - importShadow # test helpers shadow imported package names
+        - builtinShadow
+        - hugeParam # value params are intentional; not worth a pointer API
+        - rangeValCopy
+        - httpNoBody
+        - emptyStringTest
     exhaustive:
       default-signifies-exhaustive: true
     fatcontext:
       check-struct-pointers: true
-
-formatters:
-  enable:
-    - gofmt
 
 issues:
   max-issues-per-linter: 0

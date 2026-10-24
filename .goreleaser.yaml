@@ -38,6 +38,7 @@ archives:
       - LICENSE
       - AGENTS.md
       - .aiignore
+      - configs/config.example.yaml
 
 checksum:
   name_template: checksums.txt
