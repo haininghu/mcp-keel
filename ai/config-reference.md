@@ -107,6 +107,30 @@ rejected (write `core/...` for a core resource whose name also exists in another
 The built-in sensitive set uses canonical names (core bare; RBAC as `rbac.authorization.k8s.io/...`).
 Additional entries are canonicalised per request; an ambiguous entry protects all matching groups.
 
+## `providers[].redactions[]`
+
+Content redaction of `get`/`list` results (ADR 0015). It is best-effort hygiene, **not** a confidentiality
+boundary; `deny` and the sensitive set remain the controls. Rules are opt-in per provider.
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `resources` | []string | no | canonical resource names (no `*`) |
+| `namespaces` | []string | no | doublestar globs; the literal `""` = cluster-scoped |
+| `names` | []string | no | doublestar globs on `metadata.name` |
+| `labels.require` / `labels.exclude` | []string | no | as in the policy rules |
+| `fields` | list | no | `{path, action: remove \| replace, marker?}` |
+| `replace` | list | no | `{text \| pattern (RE2), marker?}` |
+
+- All match dimensions are optional; an omitted dimension imposes no constraint. `resources` uses the
+  **capability** canonicalisation: an unresolvable or ambiguous resource is skipped and warned.
+- `fields.path` grammar: `.`, `[*]`, `[n]`, `["..."]` and the element predicate `[field=value]`
+  (e.g. `spec.containers[*].env[name=TOKEN].value`).
+- `replace` requires exactly one non-empty `text` (literal) or `pattern` (RE2); the marker replaces the
+  whole match.
+- The default marker is hardcoded (`[REDACTED]`); a per-entry `marker` overrides it.
+- All matching rules apply (union), `fields` before `replace`. Caps are hardcoded; a breach fails closed.
+- The `text` literals are secret material: never returned by `list_configured_rules`, redacted in dumps.
+
 ## Glob semantics
 
 - doublestar, **case-sensitive**, anchored to the whole string (`test-*` does not match `xtest-a`); `*`

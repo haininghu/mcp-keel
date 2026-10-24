@@ -32,6 +32,12 @@ catch bypasses. The policy engine is backend-agnostic, so most of it is testable
 | hidden list items | the count is never returned |
 | an oversized object | valid JSON, reduced, flagged `truncated` |
 | server credentials | never present in output or logs |
+| a redacted field path matches nothing | no-op, warned once (best-effort, not fail-closed) |
+| a redaction cap breached | object not returned (`get`: not found; `list`: dropped) |
+| overlapping `replace` matches | the first matching rule's marker wins (deterministic) |
+| a plaintext secret value in `Secret.data` | NOT caught by `replace` (base64); only `fields: remove data` protects |
+| a redaction rule with an unresolvable/ambiguous resource | skipped + warned (capability logic) |
+| a redaction `replace`/`text` literal | never returned by `list_configured_rules`, never logged |
 
 ## Commands
 

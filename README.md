@@ -117,6 +117,10 @@ Key rules:
 - **Policy and RBAC are independent layers.** Effective visibility is the intersection of the policy and
   the kubeconfig identity's RBAC; the policy never escalates beyond RBAC. See
   [`ai/threat-model.md`](ai/threat-model.md).
+- **Content redaction (optional).** `providers[].redactions` strips configured content (static text,
+  patterns, fields, specific env vars) from `get`/`list` results. It is best-effort hygiene, **not** a
+  confidentiality boundary; `deny` remains the control. See
+  [`ai/adr/0015-content-redaction.md`](ai/adr/0015-content-redaction.md).
 
 ## Requirements
 

@@ -45,6 +45,7 @@ the mitigations, and maps each mitigation to the invariants in `../AGENTS.md`.
 | Server credentials never logged or returned | inv 12, ADR 0007 |
 | Output is bounded and quiet | inv 13, ADR 0013 |
 | No authorization caches; discovery cache is fail-closed | inv 14, ADR 0014 |
+| Content redaction (best-effort; not a boundary) | inv 15, ADR 0015 |
 
 ## Policy and RBAC are independent layers
 
@@ -64,8 +65,10 @@ why the policy must be least-privilege and why output is bounded.
 ## Non-goals (v1)
 
 - Not a **confidentiality control for object content**: content is returned as stored, including
-  `Secret.data` when `secrets:get` is explicitly granted. Content redaction (for secrets and other
-  resources) is future work.
+  `Secret.data` when `secrets:get` is explicitly granted. Configured content redaction (ADR 0015) can strip
+  known content, but it is **best-effort hygiene, not a boundary** - a typo'd field path, base64 secret
+  values or the same value in another field/resource are not caught. `deny` and the sensitive set remain
+  the confidentiality controls.
 - Not a replacement for Kubernetes RBAC.
 - Not hardened against a malicious local user with config/kubeconfig access.
 - No defence against a compromised cluster or API server.

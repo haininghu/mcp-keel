@@ -119,6 +119,9 @@ type ProviderConfig struct {
 	PolicyRead bool `yaml:"policy_read"`
 	// Rules are the ordered authorization rules.
 	Rules []RuleConfig `yaml:"rules"`
+	// Redactions are the ordered content-redaction rules (ADR 0015); empty
+	// returns content as stored.
+	Redactions []RedactionConfig `yaml:"redactions"`
 
 	// QPS, Burst, RequestTimeout, DiscoveryTimeout and DiscoveryCacheTTL
 	// override the server defaults when non-nil.
@@ -390,6 +393,11 @@ func (p *ProviderConfig) validate() error {
 	for i := range p.Rules {
 		if err := p.Rules[i].validate(); err != nil {
 			return fmt.Errorf("rules[%d]: %w", i, err)
+		}
+	}
+	for i := range p.Redactions {
+		if err := p.Redactions[i].validate(); err != nil {
+			return fmt.Errorf("redactions[%d]: %w", i, err)
 		}
 	}
 	return nil

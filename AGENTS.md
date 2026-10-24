@@ -115,10 +115,10 @@ Authorization is the product. These rules are security-critical:
    any error that prevents the decision. Discovery is partial-failure tolerant: when it is complete, only
    an unresolved or ambiguous **requested** resource denies; while it is **partial**, an unqualified name
    is denied (a failed group could have made it ambiguous) and `core/...`/`group/...` resolve (ADR 0014).
-6. **Resource identity is canonicalised.** The tool argument is resolved through discovery/RESTMapper to
-   one canonical form (`group/resource[/subresource]`, core = blank), and that same form is used for BOTH
-   policy matching and the API call. Aliases, singular/plural forms, shortnames, case and ambiguous names
-   (`events`) must never produce a different policy result; ambiguity fails closed.
+6. **Resource identity is canonicalised.** The tool argument is resolved through discovery to one canonical
+   form (`group/resource[/subresource]`, core = blank), and that same form is used for policy matching,
+   redaction matching and the API call. Aliases, singular/plural forms, shortnames, case and ambiguous
+   names (`events`) must never produce a different result; ambiguity fails closed.
 7. **Wildcards are fail-closed.** On an `allow` rule, `*` never matches subresources and never matches the
    built-in sensitive set (canonical names: `secrets`, `serviceaccounts`, `configmaps`,
    `rbac.authorization.k8s.io/roles`, `rbac.authorization.k8s.io/rolebindings`,
@@ -153,6 +153,14 @@ Authorization is the product. These rules are security-critical:
 14. **No authorization caches.** Labels and marker state are resolved per request; discovery may use a
     short-lived per-`(provider, context)` cache (`discovery_cache_ttl`) with fail-closed invalidation on a
     `NoMatch` (ADR 0014).
+15. **Content redaction is best-effort hygiene, not a confidentiality boundary.** Redaction is opt-in per
+    provider (`providers[].redactions`), runs after a successful allow over `get`/`list` results only, and
+    never authorizes or denies. All matching rules apply (not first-match), phase-ordered (`fields` then
+    `replace`); a field path that matches nothing is a no-op. It walks string values only, after
+    `managedFields` pruning and before reduction. The default marker and the caps are hardcoded; a cap
+    breach fails closed (the object is never returned unredacted). Literal replacement text is secret
+    material: never logged, never returned by `list_configured_rules`, redacted in config dumps. `deny`
+    and the sensitive set remain the confidentiality controls (ADR 0015).
 
 ## Authorization flow
 

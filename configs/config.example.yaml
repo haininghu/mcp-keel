@@ -143,6 +143,30 @@ providers:
               names:
                 include: ["frontend-*"]
 
+    # Content redaction (ADR 0015): best-effort hygiene, NOT a confidentiality
+    # boundary. Applied to get/list results after a successful allow. All match
+    # dimensions are optional (omitted = no constraint). Secrets must be stripped
+    # structurally: data is base64, so a text/pattern match will not catch a
+    # plaintext secret value.
+    redactions:
+      - resources: ["core/secrets"]
+        fields:
+          - { path: data, action: remove }
+          - { path: stringData, action: remove }
+          # This annotation often carries the whole applied manifest, incl. secrets.
+          - { path: 'metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"]',
+              action: remove }
+
+      - resources: ["core/pods"]
+        namespaces: ["test-*"]
+        labels: { require: ["confidential"] }
+        fields:
+          - { path: "spec.containers[*].env[name=TOKEN].value", action: replace }
+        replace:
+          - text: "my-static-token"                  # marker defaults to [REDACTED]
+          - pattern: '\b\d{1,3}(\.\d{1,3}){3}\b'     # RE2, e.g. IPv4
+            marker: "[IP]"
+
   # ---------------------------------------------------------------------------
   # All prod and int clusters. "["*prod*", "*int*"]" is convenient but loose:
   # it also matches names such as "nonprod" or "preprod". Prefer anchored

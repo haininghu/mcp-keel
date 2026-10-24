@@ -20,6 +20,7 @@ capabilities matches the request AND that capability's filters pass; the first a
 - **Resource canonicalisation**: the tool argument is resolved through discovery/RESTMapper to one
   canonical form used for BOTH policy matching and the API call.
 - **Label and marker checks**: object labels, and the optional namespace marker, are fail-closed.
+- **Content redaction**: per-provider, post-authorization, over `get`/`list` string values (ADR 0015).
 - **Output shaping**: `managedFields` pruning, object reduction and the response budget (ADR 0013).
 
 Where a check cannot be performed (for example discovery fails, or an ambiguous resource name), the server
@@ -124,6 +125,8 @@ keeps the pre-check an optimization only - it never grants, and it never over-de
 - `adr/0004-cluster-scope-and-wildcard-safety.md` — scope and wildcard semantics.
 - `adr/0013-output-truncation-and-limits.md` — output envelopes, truncation and the response budget.
 - `adr/0014-kubernetes-client-and-discovery.md` — client config, discovery and caching.
+- `adr/0015-content-redaction.md` — configured content redaction of tool results.
+- `method-specs/redaction.md` — the redaction contract (path grammar, phases, caps).
 - `config-reference.md` — the authoritative config field reference.
 - `method-specs/authorization.md` — the shared pipeline; `method-specs/output.md` — output contract.
 - `../AGENTS.md` — invariants; `../README.md` — user-facing overview.

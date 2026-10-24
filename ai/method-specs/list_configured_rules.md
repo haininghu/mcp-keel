@@ -22,7 +22,9 @@ None.
 1. Iterate the configured providers.
 2. Include a provider only when `policy_read: true`.
 3. Emit each rule's scope (`namespaces`), `effect` and configured capabilities with their filters.
-4. Never emit effective access, object state, tokens or kubeconfig contents. The `policy_read` flag and
+4. Emit the provider's redaction structure (resources, scopes, field paths, patterns) but **never** the
+   `text` literals: they are secret material (ADR 0015).
+5. Never emit effective access, object state, tokens or kubeconfig contents. The `policy_read` flag and
    `kubeconfig` paths are configuration plumbing and are not part of the output either.
 
 ## Behavior / limits

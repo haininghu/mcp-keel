@@ -67,8 +67,10 @@ response budget. It keeps output bounded and always valid JSON, and never disclo
 ## Redaction
 
 - Server credentials (kubeconfig tokens, certificates, exec plugin output) are never part of the output.
-- Object content is returned as stored, including `Secret.data` when `secrets:get` is explicitly granted.
-  Content redaction is deferred to a later stage (ADR 0013).
+- Configured **content redaction** (ADR 0015) runs after a successful allow, over the object's string
+  values, **before** pruning/reduction: `prune(managedFields)` -> redact -> reduce -> budget. It is
+  best-effort hygiene, not a confidentiality boundary; a cap breach fails closed (the object is not
+  returned). See `redaction.md`.
 
 ## Errors
 

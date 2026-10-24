@@ -22,6 +22,7 @@ Each tool spec has:
 | `resource-canonicalization.md`| Resource identifier -> one canonical form for policy and call.    |
 | `discovery-and-caching.md`    | Per-context discovery, partial-failure tolerance and caching.     |
 | `output.md`                   | Shared output envelope, pruning, truncation and limits.           |
+| `redaction.md`                | Configured content redaction of get/list results (ADR 0015).      |
 | `get.md`                      | `get` — fetch one object by name.                                 |
 | `list.md`                     | `list` — list objects with per-item authorization.                |
 | `list_configured_rules.md`    | `list_configured_rules` — expose configured rules (config only).  |
