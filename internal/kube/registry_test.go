@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hvo/mcp-keel/internal/config"
+	"github.com/haininghu/mcp-keel/internal/config"
 )
 
 const kubeconfigYAML = `apiVersion: v1

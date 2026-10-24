@@ -15,7 +15,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 
-	"github.com/hvo/mcp-keel/internal/policy"
+	"github.com/haininghu/mcp-keel/internal/policy"
 )
 
 // Cluster is a lazily built, cached client for one (provider, context) pair. It

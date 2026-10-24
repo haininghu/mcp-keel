@@ -13,9 +13,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/hvo/mcp-keel/internal/config"
-	"github.com/hvo/mcp-keel/internal/kube"
-	"github.com/hvo/mcp-keel/internal/policy"
+	"github.com/haininghu/mcp-keel/internal/config"
+	"github.com/haininghu/mcp-keel/internal/kube"
+	"github.com/haininghu/mcp-keel/internal/policy"
 )
 
 // --- fakes ---------------------------------------------------------------

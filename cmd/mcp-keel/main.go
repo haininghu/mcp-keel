@@ -10,9 +10,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/hvo/mcp-keel/internal/config"
-	"github.com/hvo/mcp-keel/internal/kube"
-	"github.com/hvo/mcp-keel/internal/server"
+	"github.com/haininghu/mcp-keel/internal/config"
+	"github.com/haininghu/mcp-keel/internal/kube"
+	"github.com/haininghu/mcp-keel/internal/server"
 )
 
 // version is injected at build time via -ldflags.

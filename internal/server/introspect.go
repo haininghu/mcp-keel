@@ -6,8 +6,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/hvo/mcp-keel/internal/config"
-	"github.com/hvo/mcp-keel/internal/policy"
+	"github.com/haininghu/mcp-keel/internal/config"
+	"github.com/haininghu/mcp-keel/internal/policy"
 )
 
 // listConfiguredRulesInput is the (empty) argument object of

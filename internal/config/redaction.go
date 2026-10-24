@@ -7,7 +7,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
-	"github.com/hvo/mcp-keel/internal/policy"
+	"github.com/haininghu/mcp-keel/internal/policy"
 )
 
 // Field redaction actions, the accepted values of FieldRedaction.Action.

@@ -22,7 +22,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"gopkg.in/yaml.v3"
 
-	"github.com/hvo/mcp-keel/internal/policy"
+	"github.com/haininghu/mcp-keel/internal/policy"
 )
 
 const (

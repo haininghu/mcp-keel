@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/hvo/mcp-keel/internal/kube"
-	"github.com/hvo/mcp-keel/internal/policy"
+	"github.com/haininghu/mcp-keel/internal/kube"
+	"github.com/haininghu/mcp-keel/internal/policy"
 )
 
 // policyFor returns the compiled policy for a (provider, context) pair, building

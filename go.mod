@@ -1,4 +1,4 @@
-module github.com/hvo/mcp-keel
+module github.com/haininghu/mcp-keel
 
 go 1.27.1
 

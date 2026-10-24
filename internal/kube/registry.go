@@ -21,7 +21,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
-	"github.com/hvo/mcp-keel/internal/config"
+	"github.com/haininghu/mcp-keel/internal/config"
 )
 
 // Registry resolves providers and contexts to cached cluster clients. It is
