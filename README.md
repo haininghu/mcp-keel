@@ -20,17 +20,17 @@ Architecture decisions and per-tool specs live under [`ai/`](ai/README.md).
 ## Quick start
 
 ```bash
-# 1. build the server (or use a released binary)
-make build                       # -> bin/mcp-keel
+# 1. install the server (or build from a checkout with `make build`)
+go install github.com/haininghu/mcp-keel/cmd/mcp-keel@latest
 
-# 2. create your config from the documented example
-cp configs/config.example.yaml configs/config.yaml
+# 2. create a config from the documented example (configs/config.example.yaml)
+#    and edit it: set kubeconfig, contexts and your rules
 
-# 3. edit configs/config.yaml: set kubeconfig, contexts and your rules
-
-# 4. register bin/mcp-keel in your MCP host (see "Use with opencode" below)
+# 3. register the installed binary in your MCP host (see "Use with opencode")
 ```
 
+The binary lands in `$(go env GOPATH)/bin/mcp-keel`; use that path (or an absolute
+path to a locally built binary) as `command` in the host configuration.
 `configs/config.yaml` is git-ignored and must never be committed. The server
 speaks MCP over stdio only and logs to stderr; there is no HTTP listener and no
 in-cluster service account. Once registered, ask the host to call the `get` or
@@ -51,22 +51,22 @@ in-cluster service account. Once registered, ask the host to call the `get` or
 
 ## Core concepts
 
-| Concept        | Meaning                                                                                          |
-|----------------|--------------------------------------------------------------------------------------------------|
-| **Provider**   | A group of clusters, selected by kubeconfig context-name globs (`contexts`).                       |
-| **Context**    | A kubeconfig context, i.e. the cluster a request targets. The tool argument is `context`.         |
-| **Capability** | `<resource>:<verb>`, e.g. `core/pods:get`, `apps/deployments:list`, `core/pods/log:get`, `*:get`.  |
-| **Rule**       | Scope (`namespaces`, `""` = cluster-scoped) + `effect` + capabilities (each with filters).          |
+| Concept              | Meaning                                                                                    |
+|----------------------|--------------------------------------------------------------------------------------------|
+| **Provider**         | A group of clusters, selected by kubeconfig context-name globs (`contexts`).               |
+| **Context**          | A kubeconfig context, i.e. the cluster a request targets. The tool argument is `context`.  |
+| **Capability**       | `<resource>:<verb>`, e.g. `core/pods:get`, `apps/deployments:list`, `*:get`.               |
+| **Rule**             | Scope (`namespaces`, `""` = cluster-scoped) + `effect` + capabilities (each with filters). |
 | **Namespace marker** | Optional label-based default-deny overlay (the analogue of mcp-forj's `.noai`).            |
 
 ## Tools
 
-| Tool                    | Capability    | Description                                                     |
-|-------------------------|---------------|-----------------------------------------------------------------|
-| `get`                   | see rule      | Fetch one object by provider, context, resource, namespace, name.|
-| `list`                  | see rule      | List objects, optionally by namespace, label selector, limit.   |
-| `list_configured_rules` | `policy_read` | List configured rules for providers that opt in. Config only.   |
-| `list_clusters`         | `policy_read` | List accessible provider/context names for opted-in providers.  |
+| Tool                    | Capability    | Description                                                       |
+|-------------------------|---------------|-------------------------------------------------------------------|
+| `get`                   | see rule      | Fetch one object by provider, context, resource, namespace, name. |
+| `list`                  | see rule      | List objects, optionally by namespace, label selector, limit.     |
+| `list_configured_rules` | `policy_read` | List configured rules for providers that opt in. Config only.     |
+| `list_clusters`         | `policy_read` | List accessible provider/context names for opted-in providers.    |
 
 `get`/`list` are gated by the matching rule's `resource:verb` capabilities. See
 [`ai/method-specs/`](ai/method-specs/README.md) for the exact contracts.
@@ -190,17 +190,6 @@ Register the server as a local MCP server in `opencode.json` (absolute paths are
 
 opencode loads its configuration once at startup, so restart it after editing.
 
-## Docs
-
-- [`AGENTS.md`](AGENTS.md) — repo map, conventions and authorization invariants.
-- [`ai/architecture.md`](ai/architecture.md) — components and the shared authorization pipeline.
-- [`ai/adr/`](ai/adr/) — architecture decision records (start at `0001`).
-- [`ai/method-specs/`](ai/method-specs/) — specifications of every MCP tool.
-- [`ai/config-reference.md`](ai/config-reference.md) — authoritative configuration field reference.
-- [`ai/threat-model.md`](ai/threat-model.md) — assets, adversary, trust boundaries and mitigations.
-- [`ai/testing.md`](ai/testing.md) — test layers and the bypass matrix.
-- [`configs/config.example.yaml`](configs/config.example.yaml) — documented example configuration.
-
 ## Commit conventions
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/). Format:
@@ -237,6 +226,18 @@ Breaking changes are marked with `!` (`feat(policy)!: ...`) and a
 `BREAKING CHANGE:` footer. An authorization change updates the matching ADR
 under [`ai/adr/`](ai/adr/) in the same commit.
 
+## Docs
+
+- [`AGENTS.md`](AGENTS.md) — repo map, conventions and authorization invariants.
+- [`ai/architecture.md`](ai/architecture.md) — components and the shared authorization pipeline.
+- [`ai/adr/`](ai/adr/) — architecture decision records (start at `0001`).
+- [`ai/method-specs/`](ai/method-specs/) — specifications of every MCP tool.
+- [`ai/config-reference.md`](ai/config-reference.md) — authoritative configuration field reference.
+- [`ai/threat-model.md`](ai/threat-model.md) — assets, adversary, trust boundaries and mitigations.
+- [`ai/testing.md`](ai/testing.md) — test layers and the bypass matrix.
+- [`configs/config.example.yaml`](configs/config.example.yaml) — documented example configuration.
+
 ## License
 
-[MIT](LICENSE).
+MIT License, Copyright © 2026 Henning Voß. See [LICENSE](LICENSE).
+
