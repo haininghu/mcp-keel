@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ func TestParseExampleConfig(t *testing.T) {
 	if cfg.Version != 1 {
 		t.Errorf("Version = %d, want 1", cfg.Version)
 	}
-	assertServerDefaults(t, cfg.Server)
+	assertServerDefaults(t, &cfg.Server)
 	if got := cfg.Server.AdditionalSensitiveResources; len(got) != 1 || got[0] != "autoscaling/horizontalpodautoscalers" {
 		t.Errorf("AdditionalSensitiveResources = %v", got)
 	}
@@ -50,7 +51,7 @@ func TestParseExampleConfig(t *testing.T) {
 	if testClusters.Name != "test-clusters" || testClusters.PolicyRead {
 		t.Errorf("provider[0] = %+v", testClusters)
 	}
-	if want := []string{"*test*", "dev-play-cluster"}; !equalStrings(testClusters.Contexts, want) {
+	if want := []string{"*test*", "dev-play-cluster"}; !slices.Equal(testClusters.Contexts, want) {
 		t.Errorf("provider[0].Contexts = %v, want %v", testClusters.Contexts, want)
 	}
 	if len(testClusters.Rules) != 4 {
@@ -60,7 +61,7 @@ func TestParseExampleConfig(t *testing.T) {
 		t.Errorf("provider[0].rules[0] = %+v, want scope-only deny", r)
 	}
 	if c := testClusters.Rules[1].Capabilities[0]; !c.Wildcard || !c.VerbWildcard ||
-		!equalStrings(c.Filter.Labels.Require, []string{"noai"}) {
+		!slices.Equal(c.Filter.Labels.Require, []string{"noai"}) {
 		t.Errorf("provider[0].rules[1].capabilities[0] = %+v", c)
 	}
 	allow := testClusters.Rules[2].Capabilities
@@ -107,7 +108,7 @@ func TestParseAppliesDefaults(t *testing.T) {
 	if cfg.Version != 1 {
 		t.Errorf("Version = %d, want 1", cfg.Version)
 	}
-	assertServerDefaults(t, cfg.Server)
+	assertServerDefaults(t, &cfg.Server)
 	if cfg.Server.NamespaceMarker.Enabled {
 		t.Error("NamespaceMarker.Enabled = true, want false")
 	}
@@ -294,7 +295,7 @@ func TestExpandPath(t *testing.T) {
 	}
 }
 
-func assertServerDefaults(t *testing.T, s ServerConfig) {
+func assertServerDefaults(t *testing.T, s *ServerConfig) {
 	t.Helper()
 	if s.Name != defaultName {
 		t.Errorf("Name = %q, want %q", s.Name, defaultName)
@@ -321,18 +322,6 @@ func assertServerDefaults(t *testing.T, s ServerConfig) {
 	if s.NamespaceMarker.Label != defaultNamespaceMarkerLabel {
 		t.Errorf("NamespaceMarker.Label = %q", s.NamespaceMarker.Label)
 	}
-}
-
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // TestCapabilityForms exercises CapabilityGrant.UnmarshalYAML directly, without
@@ -368,12 +357,12 @@ func TestCapabilityForms(t *testing.T) {
 	if !filtered.Wildcard || filtered.Verb != policy.VerbGet {
 		t.Errorf("filtered wildcard = %+v", filtered)
 	}
-	if !equalStrings(filtered.Filter.Labels.Require, []string{"managed-by=platform"}) ||
-		!equalStrings(filtered.Filter.Labels.Exclude, []string{"noai"}) {
+	if !slices.Equal(filtered.Filter.Labels.Require, []string{"managed-by=platform"}) ||
+		!slices.Equal(filtered.Filter.Labels.Exclude, []string{"noai"}) {
 		t.Errorf("filtered labels = %+v", filtered.Filter.Labels)
 	}
-	if !equalStrings(filtered.Filter.Names.Include, []string{"frontend-*"}) ||
-		!equalStrings(filtered.Filter.Names.Exclude, []string{"*-debug"}) {
+	if !slices.Equal(filtered.Filter.Names.Include, []string{"frontend-*"}) ||
+		!slices.Equal(filtered.Filter.Names.Exclude, []string{"*-debug"}) {
 		t.Errorf("filtered names = %+v", filtered.Filter.Names)
 	}
 	if exempt := doc.Caps[3]; !exempt.Filter.NamespaceMarkerExempt {

@@ -172,8 +172,10 @@ type rawNamespaceMarker struct {
 }
 
 // Load reads, parses, defaults and validates the configuration file at path.
+// The path is operator-supplied CLI input, never tool input, so a variable path
+// cannot be steered by an MCP client.
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path is operator-supplied CLI input
 	if err != nil {
 		return nil, fmt.Errorf("read config %q: %w", path, err)
 	}
@@ -226,7 +228,7 @@ func applyDefaults(raw *rawConfig) *Config {
 	if raw.Version != nil {
 		cfg.Version = *raw.Version
 	}
-	cfg.Server = applyServerDefaults(raw.Server)
+	cfg.Server = applyServerDefaults(&raw.Server)
 	cfg.Providers = raw.Providers
 	for i := range cfg.Providers {
 		cfg.Providers[i].Kubeconfig = expandPath(cfg.Providers[i].Kubeconfig)
@@ -234,7 +236,7 @@ func applyDefaults(raw *rawConfig) *Config {
 	return cfg
 }
 
-func applyServerDefaults(raw rawServer) ServerConfig {
+func applyServerDefaults(raw *rawServer) ServerConfig {
 	server := ServerConfig{
 		Name:                         raw.Name,
 		LogLevel:                     LogLevel(raw.LogLevel),

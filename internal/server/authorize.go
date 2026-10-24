@@ -70,7 +70,8 @@ func (s *Server) buildPolicy(ctx context.Context, provider string, cluster Clust
 	specs := make([]policy.RuleSpec, 0, len(providerCfg.Rules))
 	for i, rule := range providerCfg.Rules {
 		grantSpecs := make([]policy.CapabilityGrant, 0, len(rule.Capabilities))
-		for _, grant := range rule.Capabilities {
+		for j := range rule.Capabilities {
+			grant := &rule.Capabilities[j]
 			compiled := policy.CapabilityGrant{
 				ResourceWildcard: grant.Wildcard,
 				Verb:             grant.Verb,

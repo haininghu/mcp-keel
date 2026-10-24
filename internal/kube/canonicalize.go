@@ -44,7 +44,8 @@ func buildCandidates(lists []*metav1.APIResourceList) []candidate {
 		if err != nil {
 			continue
 		}
-		for _, r := range list.APIResources {
+		for i := range list.APIResources {
+			r := &list.APIResources[i]
 			base, sub, _ := strings.Cut(r.Name, "/")
 			key := policy.Resource{Group: gv.Group, Name: base, Subresource: sub}
 			if _, ok := seen[key]; ok {
@@ -68,7 +69,7 @@ func buildCandidates(lists []*metav1.APIResourceList) []candidate {
 
 // matchesName reports whether token names the candidate by plural, singular,
 // shortname or kind, case-insensitively.
-func (c candidate) matchesName(token string) bool {
+func (c *candidate) matchesName(token string) bool {
 	if strings.EqualFold(c.resource, token) {
 		return true
 	}
@@ -138,7 +139,8 @@ func resolveCanonicalAll(st *discoveryState, raw string) ([]policy.Resource, err
 	var matches []policy.Resource
 	switch len(tokens) {
 	case 1:
-		for _, cand := range st.candidates {
+		for i := range st.candidates {
+			cand := &st.candidates[i]
 			if cand.subresource != "" {
 				continue
 			}
@@ -154,7 +156,8 @@ func resolveCanonicalAll(st *discoveryState, raw string) ([]policy.Resource, err
 		if strings.EqualFold(group, coreGroupAlias) {
 			group = ""
 		}
-		for _, cand := range st.candidates {
+		for i := range st.candidates {
+			cand := &st.candidates[i]
 			if cand.subresource == "" {
 				continue
 			}
@@ -186,7 +189,8 @@ func resolveOne(st *discoveryState, token string) (policy.Resource, error) {
 		return policy.Resource{}, partialDenied(token)
 	}
 	matches := make(map[policy.Resource]struct{})
-	for _, cand := range st.candidates {
+	for i := range st.candidates {
+		cand := &st.candidates[i]
 		if cand.subresource != "" {
 			continue
 		}
@@ -235,7 +239,8 @@ func resolveThree(st *discoveryState, groupToken, resourceToken, subToken string
 		return policy.Resource{}, partialDenied(name)
 	}
 	var matches []policy.Resource
-	for _, cand := range st.candidates {
+	for i := range st.candidates {
+		cand := &st.candidates[i]
 		if cand.subresource == "" {
 			continue
 		}
@@ -268,7 +273,8 @@ func resolveGroupResource(st *discoveryState, groupToken, resourceToken string) 
 		group = ""
 	}
 	var out []policy.Resource
-	for _, cand := range st.candidates {
+	for i := range st.candidates {
+		cand := &st.candidates[i]
 		if cand.subresource != "" {
 			continue
 		}
@@ -287,7 +293,8 @@ func resolveGroupResource(st *discoveryState, groupToken, resourceToken string) 
 // second a subresource of it.
 func resolveResourceSubresource(st *discoveryState, resourceToken, subToken string) []policy.Resource {
 	bases := make(map[policy.Resource]struct{})
-	for _, cand := range st.candidates {
+	for i := range st.candidates {
+		cand := &st.candidates[i]
 		if cand.subresource != "" {
 			continue
 		}
@@ -296,7 +303,8 @@ func resolveResourceSubresource(st *discoveryState, resourceToken, subToken stri
 		}
 	}
 	var out []policy.Resource
-	for _, cand := range st.candidates {
+	for i := range st.candidates {
+		cand := &st.candidates[i]
 		if cand.subresource == "" {
 			continue
 		}
@@ -318,7 +326,8 @@ func knownGroup(st *discoveryState, token string) bool {
 	if strings.EqualFold(token, coreGroupAlias) {
 		return true
 	}
-	for _, cand := range st.candidates {
+	for i := range st.candidates {
+		cand := &st.candidates[i]
 		if strings.EqualFold(cand.group, token) {
 			return true
 		}

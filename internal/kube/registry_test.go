@@ -161,6 +161,7 @@ type recordingHandler struct {
 
 func (h *recordingHandler) Enabled(context.Context, slog.Level) bool { return true }
 
+//nolint:gocritic // hugeParam: slog.Handler interface signature
 func (h *recordingHandler) Handle(_ context.Context, record slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -175,8 +176,8 @@ func (h *recordingHandler) WithGroup(string) slog.Handler { return h }
 func (h *recordingHandler) hasWarn() bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for _, record := range h.records {
-		if record.Level >= slog.LevelWarn {
+	for i := range h.records {
+		if h.records[i].Level >= slog.LevelWarn {
 			return true
 		}
 	}

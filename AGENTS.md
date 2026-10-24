@@ -29,6 +29,8 @@ test suite. Treat this file and `ai/` as the contract; when behavior changes, up
 | `internal/server`               | MCP server, tool handlers, argument validation, limits.         |
 | `ai/`                           | Architecture overview, ADRs, method specs.                      |
 | `configs/config.example.yaml`   | Documented example configuration.                               |
+| `.github/`, `.goreleaser.yaml`  | CI (fmt/vet/test/lint), workflow audit and release.             |
+| `.aiignore`                     | Paths AI tooling must not read (secrets, artifacts, IDE state). |
 | `README.md`, `AGENTS.md`        | User-facing overview and this file.                             |
 
 ## Commands (once the implementation exists)
@@ -40,26 +42,55 @@ make test-race # go test -race ./...
 make cover     # coverage report
 make vet       # go vet ./...
 make fmt       # gofmt -s -w .
+make fmt-check # fail if gofmt -l . prints anything (writes nothing)
+make lint      # golangci-lint run (needs golangci-lint)
+make check     # fmt-check + vet + test (what a PR must pass, writes nothing)
 make tidy      # go mod tidy
 make run       # go run ./cmd/mcp-keel -config ${CONFIG:-configs/config.yaml}
 ```
 
-Equivalent direct commands: `go build ./...`, `go vet ./...`, `go test ./...`, `gofmt -l .` (must print
-nothing).
+Equivalent direct commands: `go build ./...`, `go vet ./...`, `go test ./...`,
+`golangci-lint run ./...` (configured in `.golangci.yml`), `gofmt -l .` (must print nothing).
 
 ### Pre-finish checklist
 
 1. `gofmt -s -w .` then confirm `gofmt -l .` prints nothing.
 2. `go vet ./...`
-3. `go test -count=1 ./...`
-4. `go build ./...`
+3. `golangci-lint run ./...` (configured in `.golangci.yml`)
+4. `go test -count=1 ./...`
+5. `go build ./...`
+
+## CI
+
+- `.github/workflows/ci.yaml` - `make fmt-check`, `make vet`, `make build`,
+  `make test` and a cross-build on push/PR.
+- `.github/workflows/golangci-lint.yaml` + `.golangci.yml` - golangci-lint
+  (pinned version) on push/PR. Only linters that find bugs or security issues
+  are enabled, plus the `gofmt` and `misspell` style checks; gosec and gocritic
+  run with every rule.
+  - Discard deliberately ignored errors explicitly (`_, _ = fmt.Fprintln(...)`).
+  - Pass large structs by pointer and range over slices by index (gocritic
+    `hugeParam`/`rangeValCopy`).
+  - Silence a false positive only at its site with
+    `//nolint:<linter> // <rule>: <reason>`, never by disabling the rule.
+- `.github/workflows/release.yaml` + `.goreleaser.yaml` - release binaries on
+  `v*` tags. Validate config changes with `goreleaser check`.
+- `.github/workflows/zizmor.yaml` - audits the workflows and Dependabot config
+  with [zizmor](https://docs.zizmor.sh/) (`pedantic` persona) on push/PR. Check
+  workflow changes locally with `zizmor --persona pedantic .`: pin actions to
+  a full commit SHA with a version comment, set `persist-credentials: false`
+  on checkout, keep `setup-go` caching off, declare `permissions: {}` at the
+  workflow level and grant (and comment) only what each job needs.
+- `.github/dependabot.yml` - weekly updates for GitHub Actions and Go modules,
+  with a 7-day cooldown.
 
 ## Conventions
 
 - Documentation and code comments are in **English**.
 - Every **exported** identifier has a doc comment starting with its name.
 - Markdown lines are at most **120 characters**.
-- No secrets in the repo. `configs/config.yaml` and `opencode.json` are git-ignored.
+- No secrets in the repo. `configs/config.yaml` and `opencode.json` are git-ignored; `.aiignore` additionally
+  keeps secrets, build artifacts and IDE state out of AI tooling context.
 - Small, focused commits with a `type:` prefix: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`.
 - Prefer Go **1.27 stdlib** helpers: `slices`, `maps`, `min`/`max`, `errors.AsType`, `strings.Cut`.
 - Do not add dependencies without a clear need. Planned deps: the MCP SDK, `doublestar/v4`, `yaml.v3`

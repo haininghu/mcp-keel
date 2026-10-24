@@ -3,17 +3,17 @@ package policy
 import "testing"
 
 func TestPreCheck(t *testing.T) {
-	pods := Resource{Name: "pods"}
+	podsRes := Resource{Name: "pods"}
 	secrets := Resource{Name: "secrets"}
-	podsLog := Resource{Name: "pods", Subresource: "log"}
+	podsLogRes := Resource{Name: "pods", Subresource: "log"}
 
-	defaultReq := Request{Namespace: "ns", Namespaced: true, Resource: pods, Verb: VerbGet, Name: "frontend-1"}
+	defaultReq := Request{Namespace: "ns", Namespaced: true, Resource: podsRes, Verb: VerbGet, Name: "frontend-1"}
 
 	denyNameFilter := RuleSpec{
 		Namespaces: []string{"ns"},
 		Effect:     EffectDeny,
 		Capabilities: []CapabilityGrant{{
-			Resource: pods,
+			Resource: podsRes,
 			Verb:     VerbGet,
 			Filter:   CapabilityFilter{Names: NameFilter{Include: []string{"frontend-*"}}},
 		}},
@@ -21,7 +21,7 @@ func TestPreCheck(t *testing.T) {
 	allowPodsGet := RuleSpec{
 		Namespaces:   []string{"ns"},
 		Effect:       EffectAllow,
-		Capabilities: []CapabilityGrant{{Resource: pods, Verb: VerbGet}},
+		Capabilities: []CapabilityGrant{{Resource: podsRes, Verb: VerbGet}},
 	}
 
 	cases := []struct {
@@ -51,7 +51,7 @@ func TestPreCheck(t *testing.T) {
 		{
 			name:        "deny name filter not matching proceeds",
 			specs:       []RuleSpec{denyNameFilter, allowPodsGet},
-			req:         Request{Namespace: "ns", Namespaced: true, Resource: pods, Verb: VerbGet, Name: "backend-1"},
+			req:         Request{Namespace: "ns", Namespaced: true, Resource: podsRes, Verb: VerbGet, Name: "backend-1"},
 			wantProceed: true,
 		},
 		{
@@ -61,7 +61,7 @@ func TestPreCheck(t *testing.T) {
 					Namespaces: []string{"ns"},
 					Effect:     EffectDeny,
 					Capabilities: []CapabilityGrant{{
-						Resource: pods,
+						Resource: podsRes,
 						Verb:     VerbGet,
 						Filter:   CapabilityFilter{Labels: LabelFilter{Require: []string{"noai"}}},
 					}},
@@ -77,7 +77,7 @@ func TestPreCheck(t *testing.T) {
 				Namespaces: []string{"ns"},
 				Effect:     EffectDeny,
 				Capabilities: []CapabilityGrant{{
-					Resource: pods,
+					Resource: podsRes,
 					Verb:     VerbGet,
 					Filter:   CapabilityFilter{Labels: LabelFilter{Require: []string{"noai"}}},
 				}},
@@ -108,9 +108,9 @@ func TestPreCheck(t *testing.T) {
 			specs: []RuleSpec{{
 				Namespaces:   []string{"ns"},
 				Effect:       EffectAllow,
-				Capabilities: []CapabilityGrant{{Resource: pods, Verb: VerbList}},
+				Capabilities: []CapabilityGrant{{Resource: podsRes, Verb: VerbList}},
 			}},
-			req:         Request{Namespaced: true, Resource: pods, Verb: VerbList},
+			req:         Request{Namespaced: true, Resource: podsRes, Verb: VerbList},
 			wantProceed: true,
 		},
 		{
@@ -120,7 +120,7 @@ func TestPreCheck(t *testing.T) {
 				Effect:       EffectAllow,
 				Capabilities: []CapabilityGrant{{ResourceWildcard: true, Verb: VerbGet}},
 			}},
-			req:         Request{Namespace: "ns", Namespaced: true, Resource: podsLog, Verb: VerbGet, Name: "x"},
+			req:         Request{Namespace: "ns", Namespaced: true, Resource: podsLogRes, Verb: VerbGet, Name: "x"},
 			wantProceed: false,
 			wantReason:  ReasonNoMatchingRule,
 		},
@@ -132,7 +132,7 @@ func TestPreCheck(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Build: %v", err)
 			}
-			proceed, reason := compiled.PreCheck(tc.req)
+			proceed, reason := compiled.PreCheck(&tc.req)
 			if proceed != tc.wantProceed {
 				t.Fatalf("proceed = %v (%q), want %v", proceed, reason, tc.wantProceed)
 			}
@@ -147,13 +147,13 @@ func TestPreCheck(t *testing.T) {
 // decision is always consistent with a subsequent Evaluate for requests whose
 // filters are fully known (get without a label filter).
 func TestPreCheckAgreesWithEvaluateWhenPreEvaluable(t *testing.T) {
-	pods := Resource{Name: "pods"}
+	podsRes := Resource{Name: "pods"}
 	specs := []RuleSpec{
 		{
 			Namespaces: []string{"ns"},
 			Effect:     EffectDeny,
 			Capabilities: []CapabilityGrant{{
-				Resource: pods,
+				Resource: podsRes,
 				Verb:     VerbGet,
 				Filter:   CapabilityFilter{Names: NameFilter{Include: []string{"blocked-*"}}},
 			}},
@@ -161,7 +161,7 @@ func TestPreCheckAgreesWithEvaluateWhenPreEvaluable(t *testing.T) {
 		{
 			Namespaces:   []string{"ns"},
 			Effect:       EffectAllow,
-			Capabilities: []CapabilityGrant{{Resource: pods, Verb: VerbGet}},
+			Capabilities: []CapabilityGrant{{Resource: podsRes, Verb: VerbGet}},
 		},
 	}
 	compiled, err := Build(specs, nil)
@@ -170,9 +170,9 @@ func TestPreCheckAgreesWithEvaluateWhenPreEvaluable(t *testing.T) {
 	}
 
 	for _, name := range []string{"blocked-1", "ok-1"} {
-		req := Request{Namespace: "ns", Namespaced: true, Resource: pods, Verb: VerbGet, Name: name}
-		proceed, _ := compiled.PreCheck(req)
-		decision := compiled.Evaluate(req)
+		req := Request{Namespace: "ns", Namespaced: true, Resource: podsRes, Verb: VerbGet, Name: name}
+		proceed, _ := compiled.PreCheck(&req)
+		decision := compiled.Evaluate(&req)
 		if proceed != decision.Allowed {
 			t.Fatalf("name %q: PreCheck proceed=%v but Evaluate allowed=%v", name, proceed, decision.Allowed)
 		}

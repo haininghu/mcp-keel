@@ -332,7 +332,7 @@ func TestEvaluate(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Build() error = %v", err)
 			}
-			if got := p.Evaluate(tc.req); got != tc.want {
+			if got := p.Evaluate(&tc.req); got != tc.want {
 				t.Fatalf("Evaluate(%+v) = %+v, want %+v", tc.req, got, tc.want)
 			}
 		})
@@ -350,7 +350,7 @@ func TestBuiltinSensitiveAlwaysEnforced(t *testing.T) {
 	}
 	for _, res := range BuiltinSensitive() {
 		req := Request{Namespace: "default", Namespaced: true, Resource: res, Verb: VerbGet, Name: "x"}
-		if got := p.Evaluate(req); got.Allowed {
+		if got := p.Evaluate(&req); got.Allowed {
 			t.Errorf("allow wildcard granted built-in sensitive resource %s: %+v", res, got)
 		}
 	}

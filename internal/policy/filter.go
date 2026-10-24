@@ -8,7 +8,7 @@ import (
 
 // matches reports whether all of the filter's predicates pass for req. An empty
 // filter passes.
-func (f CapabilityFilter) matches(req Request) bool {
+func (f *CapabilityFilter) matches(req *Request) bool {
 	return f.Labels.matches(req.Labels) && f.Names.matches(req.Name)
 }
 

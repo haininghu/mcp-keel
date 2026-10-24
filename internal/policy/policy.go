@@ -110,8 +110,8 @@ func compileRule(spec RuleSpec) (compiledRule, error) {
 		return compiledRule{}, fmt.Errorf("allow rule must list at least one capability")
 	}
 	rule.capabilities = make([]compiledGrant, 0, len(spec.Capabilities))
-	for _, grant := range spec.Capabilities {
-		compiled, err := compileGrant(grant, spec.Effect)
+	for i := range spec.Capabilities {
+		compiled, err := compileGrant(&spec.Capabilities[i], spec.Effect)
 		if err != nil {
 			return compiledRule{}, err
 		}
@@ -120,7 +120,7 @@ func compileRule(spec RuleSpec) (compiledRule, error) {
 	return rule, nil
 }
 
-func compileGrant(grant CapabilityGrant, effect Effect) (compiledGrant, error) {
+func compileGrant(grant *CapabilityGrant, effect Effect) (compiledGrant, error) {
 	compiled := compiledGrant{filter: grant.Filter}
 
 	resource := grant.Resource

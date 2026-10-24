@@ -138,7 +138,8 @@ func (s *Server) policyReadProviderNames() []string {
 // the resource and verb exactly as written.
 func configuredCapabilities(grants []config.CapabilityGrant) []configuredCapability {
 	out := make([]configuredCapability, len(grants))
-	for i, grant := range grants {
+	for i := range grants {
+		grant := &grants[i]
 		out[i] = configuredCapability{
 			Resource:              grant.Resource,
 			Verb:                  string(grant.Verb),

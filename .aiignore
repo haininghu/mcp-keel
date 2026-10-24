@@ -1,0 +1,51 @@
+# Paths AI tooling should not read or feed into a model context.
+# Complements .gitignore; entries apply even when a path is tracked.
+
+# IDE and editor state (per-machine, noisy, no project knowledge)
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# Build artifacts and caches
+/bin/
+/dist/
+/mcp-keel
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+coverage.out
+coverage.*
+.opencode/node_modules/
+
+# Local runtime configuration and secrets: kubeconfigs, tokens and the local
+# config must never reach a model context.
+configs/config.yaml
+configs/*.local.yaml
+*.local
+*.env
+.env
+.env.*
+*.token
+token.json
+credentials.json
+*.kubeconfig
+kubeconfig
+kubeconfig.*
+*.bak
+
+# API responses and exports can contain cluster or personal data.
+*.csv
+/exports/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Repository internals that carry no project knowledge
+.git/

@@ -14,6 +14,8 @@ import (
 // handleList implements the list tool: resolve, canonicalise, validate scope,
 // pre-check, fetch a bounded window, evaluate every item and shape the
 // response. A denied list is an empty result, never an error (ADR 0008).
+//
+//nolint:gocritic // hugeParam: MCP SDK handler signature
 func (s *Server) handleList(ctx context.Context, _ *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, any, error) {
 	cluster, err := s.resolveRegistry(in.Provider, in.Context)
 	if err != nil {
@@ -31,7 +33,7 @@ func (s *Server) handleList(ctx context.Context, _ *mcp.CallToolRequest, in list
 	}
 	if namespaced {
 		if in.Namespace != "" {
-			if err := validateNamespace(in.Namespace); err != nil {
+			if err = validateNamespace(in.Namespace); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -46,7 +48,7 @@ func (s *Server) handleList(ctx context.Context, _ *mcp.CallToolRequest, in list
 	if !supported {
 		return nil, nil, errors.New("unknown resource: does not support list")
 	}
-	if err := validateLabelSelector(in.LabelSelector); err != nil {
+	if err = validateLabelSelector(in.LabelSelector); err != nil {
 		return nil, nil, err
 	}
 
@@ -55,7 +57,7 @@ func (s *Server) handleList(ctx context.Context, _ *mcp.CallToolRequest, in list
 	if err != nil {
 		return nil, nil, err
 	}
-	proceed, reason := compiled.PreCheck(policy.Request{
+	proceed, reason := compiled.PreCheck(&policy.Request{
 		Namespace:  in.Namespace,
 		Namespaced: namespaced,
 		Resource:   res,
@@ -65,7 +67,7 @@ func (s *Server) handleList(ctx context.Context, _ *mcp.CallToolRequest, in list
 		s.logger.Info("list denied by pre-check",
 			"provider", in.Provider, "context", in.Context,
 			"resource", res.String(), "namespace", in.Namespace, "reason", reason)
-		return jsonResult(s.emptyListOutput(in, res))
+		return jsonResult(s.emptyListOutput(&in, res))
 	}
 
 	items, err := cluster.List(ctx, res, in.Namespace, in.LabelSelector, limit+1)
@@ -73,12 +75,12 @@ func (s *Server) handleList(ctx context.Context, _ *mcp.CallToolRequest, in list
 		return nil, nil, mapKubeError(err)
 	}
 
-	out := s.shapeList(ctx, cluster, compiled, in, res, namespaced, items, limit)
+	out := s.shapeList(ctx, cluster, compiled, &in, res, namespaced, items, limit)
 	return jsonResult(out)
 }
 
 // emptyListOutput builds the denied-list envelope: no items, not truncated.
-func (s *Server) emptyListOutput(in listInput, res policy.Resource) listOutput {
+func (s *Server) emptyListOutput(in *listInput, res policy.Resource) listOutput {
 	return listOutput{
 		Provider:  in.Provider,
 		Context:   in.Context,
@@ -92,7 +94,7 @@ func (s *Server) emptyListOutput(in listInput, res policy.Resource) listOutput {
 // shapeList evaluates each fetched item, drops denied or marker-protected
 // items, applies the object-size and response-budget limits, and returns the
 // list envelope. The number of hidden items is logged server-side only.
-func (s *Server) shapeList(ctx context.Context, cluster Cluster, compiled *policy.Policy, in listInput, res policy.Resource, namespaced bool, items []unstructured.Unstructured, limit int) listOutput {
+func (s *Server) shapeList(ctx context.Context, cluster Cluster, compiled *policy.Policy, in *listInput, res policy.Resource, namespaced bool, items []unstructured.Unstructured, limit int) listOutput {
 	out := s.emptyListOutput(in, res)
 	windowTruncated := len(items) > limit
 
@@ -109,7 +111,7 @@ func (s *Server) shapeList(ctx context.Context, cluster Cluster, compiled *polic
 
 	for i := range items {
 		item := &items[i]
-		decision := compiled.Evaluate(policy.Request{
+		decision := compiled.Evaluate(&policy.Request{
 			Namespace:  item.GetNamespace(),
 			Namespaced: namespaced,
 			Resource:   res,

@@ -96,7 +96,7 @@ func HTTPStatus(err error) int {
 
 // withStatus attaches the error's HTTP status code to sentinel when it carries
 // one, so the server can surface "forbidden (HTTP 403)" without a response body.
-func withStatus(sentinel error, err error) error {
+func withStatus(sentinel, err error) error {
 	if code := apiStatusCode(err); code != 0 {
 		return &StatusError{Sentinel: sentinel, Code: code}
 	}

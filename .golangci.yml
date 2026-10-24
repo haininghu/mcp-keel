@@ -1,15 +1,58 @@
+version: "2"
+
 run:
   timeout: 5m
 
+# Linters that can find bugs or security issues, plus the gofmt/misspell style
+# checks kept from the original setup. gosec and gocritic run with every rule;
+# silence a false positive at its site with
+# //nolint:<linter> // <rule>: <reason> instead of disabling the rule.
 linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
   enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gofmt
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - contextcheck
+    - durationcheck
+    - errchkjson
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - gocheckcompilerdirectives
+    - gocritic
+    - gosec
+    - makezero
     - misspell
+    - musttag
+    - nilerr
+    - nilnesserr
+    - noctx
+    - nosprintfhostport
+    - reassign
+    - wastedassign
+  settings:
+    errcheck:
+      check-type-assertions: true
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # memory layout, not correctness
+        - findcall # demo analyzer
+    staticcheck:
+      checks: ["SA*"] # bug checks only; S, ST and QF are style
+    gocritic:
+      enable-all: true
+    exhaustive:
+      default-signifies-exhaustive: true
+    fatcontext:
+      check-struct-pointers: true
+
+formatters:
+  enable:
+    - gofmt
 
 issues:
-  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0

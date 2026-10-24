@@ -108,7 +108,8 @@ func (c *Cluster) SupportsVerb(ctx context.Context, res policy.Resource, verb po
 	if err != nil {
 		return false, err
 	}
-	for _, cand := range st.candidates {
+	for i := range st.candidates {
+		cand := &st.candidates[i]
 		if cand.group != res.Group || cand.resource != res.Name || cand.subresource != res.Subresource {
 			continue
 		}
@@ -124,7 +125,8 @@ func (c *Cluster) Namespaced(ctx context.Context, res policy.Resource) (bool, er
 	if err != nil {
 		return false, err
 	}
-	for _, cand := range st.candidates {
+	for i := range st.candidates {
+		cand := &st.candidates[i]
 		if cand.group == res.Group && cand.resource == res.Name && cand.subresource == "" {
 			return cand.namespaced, nil
 		}
@@ -205,7 +207,8 @@ func (c *Cluster) resolveGVR(ctx context.Context, res policy.Resource) (schema.G
 	}
 	var namespaced bool
 	found := false
-	for _, cand := range st.candidates {
+	for i := range st.candidates {
+		cand := &st.candidates[i]
 		if cand.subresource == "" && cand.group == res.Group && cand.resource == res.Name {
 			namespaced = cand.namespaced
 			found = true

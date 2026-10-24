@@ -130,7 +130,13 @@ make build        # -> bin/mcp-keel
 make test         # unit tests
 make test-e2e     # end-to-end smoke tests against a real API server (envtest)
 make cover        # coverage report
+make lint         # golangci-lint run (needs golangci-lint)
+make check        # fmt-check + vet + test, what a pull request must pass
 ```
+
+CI runs `fmt-check`, `vet`, `build` (including a cross-build), `test` and
+`golangci-lint` on every push and pull request; see the [`.github/workflows/`](.github/workflows/)
+and [`.golangci.yml`](.golangci.yml). Tagging `v*` builds release binaries with GoReleaser.
 
 ## Run
 

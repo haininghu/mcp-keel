@@ -66,16 +66,16 @@ type LabelSet struct {
 // value). Require lists entries that must all match; Exclude lists entries that
 // must not match and wins over Require.
 type LabelFilter struct {
-	Require []string
-	Exclude []string
+	Require []string `yaml:"require"`
+	Exclude []string `yaml:"exclude"`
 }
 
 // NameFilter selects objects by metadata.name using doublestar globs. When
 // Include is non-empty the name must match at least one glob; Exclude requires
 // the name to match none and wins over Include.
 type NameFilter struct {
-	Include []string
-	Exclude []string
+	Include []string `yaml:"include"`
+	Exclude []string `yaml:"exclude"`
 }
 
 // CapabilityFilter narrows a capability grant. Labels and Names are match
@@ -83,9 +83,9 @@ type NameFilter struct {
 // records that the grant opts out of the namespace-marker overlay; the marker
 // check itself is not part of this package.
 type CapabilityFilter struct {
-	Labels                LabelFilter
-	Names                 NameFilter
-	NamespaceMarkerExempt bool
+	Labels                LabelFilter `yaml:"labels"`
+	Names                 NameFilter  `yaml:"names"`
+	NamespaceMarkerExempt bool        `yaml:"namespace_marker_exempt"`
 }
 
 // CapabilityGrant is one "resource:verb" entry of a rule with an optional

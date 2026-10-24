@@ -7,7 +7,7 @@ import "github.com/bmatcuk/doublestar/v4"
 // deny rule without capabilities OR one of its capabilities matches the
 // requested resource and verb and that capability's filter passes). If no rule
 // applies, access is denied (deny-by-default).
-func (p *Policy) Evaluate(req Request) Decision {
+func (p *Policy) Evaluate(req *Request) Decision {
 	reason := ReasonNoMatchingRule
 	for _, rule := range p.rules {
 		if !rule.scopeMatches(req) {
@@ -21,7 +21,8 @@ func (p *Policy) Evaluate(req Request) Decision {
 
 		// Best explanation this rule can give if none of its grants applies.
 		ruleReason := ReasonCapabilityNotGranted
-		for _, grant := range rule.capabilities {
+		for i := range rule.capabilities {
+			grant := &rule.capabilities[i]
 			if !grant.matchesResource(req.Resource, rule.effect, p.sensitive) {
 				continue
 			}
@@ -76,7 +77,7 @@ const (
 //
 // A rule that only *might* apply blocks any later deny short-circuit, because
 // first-match-wins cannot be decided before the fetch.
-func (p *Policy) PreCheck(req Request) (bool, string) {
+func (p *Policy) PreCheck(req *Request) (proceed bool, reason string) {
 	for _, rule := range p.rules {
 		switch rule.preCheckStatus(req, p.sensitive) {
 		case preDefinite:
@@ -91,6 +92,8 @@ func (p *Policy) PreCheck(req Request) (bool, string) {
 				return true, ""
 			}
 			return false, ReasonNoMatchingRule
+		case preCannot:
+			// The rule cannot apply; fall through to the next rule.
 		}
 	}
 	if p.GrantsAnywhere(req.Resource, req.Verb) {
@@ -101,7 +104,7 @@ func (p *Policy) PreCheck(req Request) (bool, string) {
 
 // preCheckStatus classifies a rule against the dimensions known before the
 // fetch. A deny rule without capabilities applies to every capability in scope.
-func (r compiledRule) preCheckStatus(req Request, sensitive map[Resource]struct{}) preStatus {
+func (r compiledRule) preCheckStatus(req *Request, sensitive map[Resource]struct{}) preStatus {
 	if !r.scopeMatches(req) {
 		return preCannot
 	}
@@ -109,18 +112,21 @@ func (r compiledRule) preCheckStatus(req Request, sensitive map[Resource]struct{
 		return preDefinite
 	}
 	status := preCannot
-	for _, grant := range r.capabilities {
+	for i := range r.capabilities {
+		grant := &r.capabilities[i]
 		if !grant.matchesResource(req.Resource, r.effect, sensitive) {
 			continue
 		}
 		if !grant.matchesVerb(req.Verb, r.effect) {
 			continue
 		}
-		switch preCheckGrantStatus(grant.filter, req) {
+		switch preCheckGrantStatus(&grant.filter, req) {
 		case preDefinite:
 			return preDefinite
 		case prePossible:
 			status = prePossible
+		case preCannot:
+			// The filter cannot match; this grant does not apply.
 		}
 	}
 	return status
@@ -129,7 +135,7 @@ func (r compiledRule) preCheckStatus(req Request, sensitive map[Resource]struct{
 // preCheckGrantStatus classifies a capability's filter. A name filter is
 // pre-evaluable only when the name is known (get); a label filter never is. A
 // filter that is pre-evaluable and fails makes the grant inapplicable.
-func preCheckGrantStatus(filter CapabilityFilter, req Request) preStatus {
+func preCheckGrantStatus(filter *CapabilityFilter, req *Request) preStatus {
 	status := preDefinite
 	if len(filter.Names.Include) > 0 || len(filter.Names.Exclude) > 0 {
 		if req.Name == "" {
@@ -156,7 +162,8 @@ func (p *Policy) GrantsAnywhere(res Resource, verb Verb) bool {
 		if rule.effect != EffectAllow {
 			continue
 		}
-		for _, grant := range rule.capabilities {
+		for i := range rule.capabilities {
+			grant := &rule.capabilities[i]
 			if !grant.matchesResource(res, EffectAllow, p.sensitive) {
 				continue
 			}
@@ -194,7 +201,7 @@ func reasonRank(reason string) int {
 // rule. A namespaced request matches through the namespace globs; a
 // cluster-scoped request matches only the literal "" marker, never a glob
 // (ADR 0004).
-func (r compiledRule) scopeMatches(req Request) bool {
+func (r compiledRule) scopeMatches(req *Request) bool {
 	if !req.Namespaced {
 		return r.clusterMarker
 	}
@@ -216,7 +223,7 @@ func (r compiledRule) scopeMatches(req Request) bool {
 // resource. An empty resource never matches; an allow wildcard never covers
 // subresources or sensitive resources; a deny wildcard covers everything
 // (ADR 0004).
-func (g compiledGrant) matchesResource(res Resource, effect Effect, sensitive map[Resource]struct{}) bool {
+func (g *compiledGrant) matchesResource(res Resource, effect Effect, sensitive map[Resource]struct{}) bool {
 	if res.Name == "" {
 		return false
 	}
@@ -237,7 +244,7 @@ func (g compiledGrant) matchesResource(res Resource, effect Effect, sensitive ma
 // matchesVerb reports whether a capability grant covers the requested verb. A
 // wildcard verb only exists on deny rules, but the effect is re-checked so a
 // malformed grant can never grant implicitly.
-func (g compiledGrant) matchesVerb(verb Verb, effect Effect) bool {
+func (g *compiledGrant) matchesVerb(verb Verb, effect Effect) bool {
 	if g.verb == verb {
 		return true
 	}

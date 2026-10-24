@@ -12,6 +12,8 @@ import (
 // handleGet implements the get tool: resolve, canonicalise, validate scope,
 // pre-check, fetch, evaluate, apply the namespace marker, then shape output.
 // Any denial is reported as "not found" (ADR 0008).
+//
+//nolint:gocritic // hugeParam: MCP SDK handler signature
 func (s *Server) handleGet(ctx context.Context, _ *mcp.CallToolRequest, in getInput) (*mcp.CallToolResult, any, error) {
 	cluster, err := s.resolveRegistry(in.Provider, in.Context)
 	if err != nil {
@@ -31,13 +33,13 @@ func (s *Server) handleGet(ctx context.Context, _ *mcp.CallToolRequest, in getIn
 		if in.Namespace == "" {
 			return nil, nil, errors.New("namespace is required for a namespaced resource")
 		}
-		if err := validateNamespace(in.Namespace); err != nil {
+		if err = validateNamespace(in.Namespace); err != nil {
 			return nil, nil, err
 		}
 	} else if in.Namespace != "" {
 		return nil, nil, errors.New("namespace is not allowed for a cluster-scoped resource")
 	}
-	if err := validateName(in.Name); err != nil {
+	if err = validateName(in.Name); err != nil {
 		return nil, nil, err
 	}
 
@@ -53,7 +55,7 @@ func (s *Server) handleGet(ctx context.Context, _ *mcp.CallToolRequest, in getIn
 	if err != nil {
 		return nil, nil, err
 	}
-	proceed, reason := compiled.PreCheck(policy.Request{
+	proceed, reason := compiled.PreCheck(&policy.Request{
 		Namespace:  in.Namespace,
 		Namespaced: namespaced,
 		Resource:   res,
@@ -75,7 +77,7 @@ func (s *Server) handleGet(ctx context.Context, _ *mcp.CallToolRequest, in getIn
 		return nil, nil, errNotFound
 	}
 
-	decision := compiled.Evaluate(policy.Request{
+	decision := compiled.Evaluate(&policy.Request{
 		Namespace:  in.Namespace,
 		Namespaced: namespaced,
 		Resource:   res,
