@@ -3,7 +3,7 @@ module github.com/haininghu/mcp-keel
 go 1.27.1
 
 require (
-	github.com/bmatcuk/doublestar/v4 v4.10.2
+	github.com/bmatcuk/doublestar/v4 v4.10.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.37.1
