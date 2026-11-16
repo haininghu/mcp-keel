@@ -147,8 +147,9 @@ Authorization is the product. These rules are security-critical:
     exactly like a non-existent one. The precise reason is logged server-side only.
 12. **Credentials never leak.** Kubeconfig paths come from config, never from tool input. The server's own
     credentials (tokens, client certificates and keys, exec plugin output) and raw error response bodies
-    are never logged or returned; a config dump is redacted. Object content is returned as stored
-    (ADR 0013).
+    are never logged or returned; a config dump is redacted. A credential-plugin failure may be surfaced as
+    a secret-free classification (plugin command base name plus a re-authentication hint), never as plugin
+    output. Object content is returned as stored (ADR 0013).
 13. **Output is bounded and quiet.** `list` uses a bounded scan window and caps items; the whole response
     is bounded by `server.max_response_bytes`; `metadata.managedFields` is always stripped and an oversized
     object is reduced to `{apiVersion, kind, metadata}`. The number of hidden items is never returned (only

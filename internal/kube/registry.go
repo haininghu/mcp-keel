@@ -9,6 +9,7 @@ package kube
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -164,9 +165,10 @@ func (r *Registry) buildCluster(p *provider, contextName string) (*Cluster, erro
 		return nil, fmt.Errorf("provider %q: context %q: build discovery client: %w", p.cfg.Name, contextName, err)
 	}
 	return &Cluster{
-		provider: p.cfg.Name,
-		context:  contextName,
-		dynamic:  dynamicClient,
+		provider:         p.cfg.Name,
+		context:          contextName,
+		dynamic:          dynamicClient,
+		credentialPlugin: credentialPluginName(clientConfig, contextName),
 		source: discoveryClientSource{
 			client: discoveryClient,
 			logger: r.logger,
@@ -174,6 +176,25 @@ func (r *Registry) buildCluster(p *provider, contextName string) (*Cluster, erro
 		cacheTTL: time.Duration(r.providerCacheTTL(p)),
 		now:      time.Now,
 	}, nil
+}
+
+// credentialPluginName returns the base name of the context's exec credential
+// plugin command, or empty when the context uses none. Only the base name is
+// kept; the command line and its environment are never exposed (ADR 0007).
+func credentialPluginName(clientConfig clientcmd.ClientConfig, contextName string) string {
+	raw, err := clientConfig.RawConfig()
+	if err != nil {
+		return ""
+	}
+	ctx, ok := raw.Contexts[contextName]
+	if !ok {
+		return ""
+	}
+	auth, ok := raw.AuthInfos[ctx.AuthInfo]
+	if !ok || auth.Exec == nil || auth.Exec.Command == "" {
+		return ""
+	}
+	return filepath.Base(auth.Exec.Command)
 }
 
 // loadingRules builds client-go loading rules honouring the kubeconfig path

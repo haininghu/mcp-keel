@@ -36,10 +36,36 @@ users:
     token: super-secret-token
 `
 
+const execKubeconfigYAML = `apiVersion: v1
+kind: Config
+clusters:
+- name: c1
+  cluster:
+    server: https://example.invalid
+contexts:
+- name: exec-ctx
+  context:
+    cluster: c1
+    user: u1
+current-context: exec-ctx
+users:
+- name: u1
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: /usr/bin/gcloud
+      args: ["config", "config-helper"]
+`
+
 func writeKubeconfig(t *testing.T) string {
 	t.Helper()
+	return writeKubeconfigData(t, kubeconfigYAML)
+}
+
+func writeKubeconfigData(t *testing.T, data string) string {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "kubeconfig")
-	if err := os.WriteFile(path, []byte(kubeconfigYAML), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		t.Fatalf("write kubeconfig: %v", err)
 	}
 	return path
@@ -61,6 +87,21 @@ func testConfig(kubeconfig string, contexts []string) *config.Config {
 		Providers: []config.ProviderConfig{
 			{Name: "prod", Contexts: contexts},
 		},
+	}
+}
+
+func TestClusterRecordsCredentialPluginBaseName(t *testing.T) {
+	path := writeKubeconfigData(t, execKubeconfigYAML)
+	registry, err := NewRegistry(testConfig(path, []string{"exec-ctx"}), slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	cluster, err := registry.Cluster("prod", "exec-ctx")
+	if err != nil {
+		t.Fatalf("Cluster: %v", err)
+	}
+	if cluster.credentialPlugin != "gcloud" {
+		t.Fatalf("credentialPlugin = %q, want gcloud", cluster.credentialPlugin)
 	}
 }
 

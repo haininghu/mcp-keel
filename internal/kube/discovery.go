@@ -32,7 +32,13 @@ type discoveryState struct {
 func (c *Cluster) load(ctx context.Context) (*discoveryState, error) {
 	groups, lists, partial, err := c.source.resources(ctx)
 	if err != nil {
-		return nil, err
+		// Classify a credential-plugin failure before safeError discards the
+		// underlying error. A credential failure is operational, not a
+		// resource-shape problem, and the agent needs to see it (ADR 0007).
+		if c.credentialPlugin != "" && isCredentialPluginError(err) {
+			return nil, &CredentialError{Plugin: c.credentialPlugin}
+		}
+		return nil, safeError(err)
 	}
 	return &discoveryState{
 		candidates: buildCandidates(lists),

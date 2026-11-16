@@ -18,14 +18,25 @@ Three things were unspecified and would be invented during implementation:
 
 ### Discovery is partial-failure tolerant
 
-- Discovery uses `ServerPreferredResources`. When it returns `ErrGroupDiscoveryFailed`, the successfully
-  returned groups are still used; the failed groups are logged server-side only.
+- Discovery uses `ServerGroupsAndResources` (not `ServerPreferredResources`, which omits subresource
+  entries such as `pods/log`). When it returns `ErrGroupDiscoveryFailed`, the successfully returned groups
+  are still used; the failed groups are logged server-side only.
 - When discovery is **complete**, a request is denied only when the requested resource cannot be resolved
   (unknown or ambiguous); a failure of an unrelated group never denies.
 - When discovery is **partial** (a group failed), an **unqualified** name is denied, because the failed
   group could have made it ambiguous; `core/...` and `group/...` still resolve. This keeps the ambiguity
   guarantee deterministic (ADR 0012). The `*` resource wildcard is not resolved through discovery and is
   unaffected.
+
+### Credential-plugin failures
+
+- A kubeconfig exec credential plugin can fail before any HTTP request (for example because `gcloud` needs
+  re-authentication). That error is **not** a resource-resolution result.
+- The cluster knows whether the context uses an exec plugin and its command base name. It classifies the
+  failure as `CredentialError` (sentinel `ErrCredentialsUnavailable`) and drops the wrapped error, because
+  the plugin's output may contain secret material (ADR 0007).
+- The server reports `cluster authentication failed` with the plugin name and a re-authentication hint,
+  instead of the generic `could not resolve resource`. No object was fetched, so this reveals no existence.
 
 ### Caching
 

@@ -28,6 +28,12 @@ type Cluster struct {
 	dynamic dynamic.Interface
 	source  discoverySource
 
+	// credentialPlugin is the base name of the context's exec credential
+	// plugin command, or empty when the context uses no exec plugin. It is used
+	// only to classify a plugin failure safely; the command itself never
+	// reaches the client (ADR 0007).
+	credentialPlugin string
+
 	cacheTTL time.Duration
 	now      func() time.Time
 
@@ -149,7 +155,7 @@ func (c *Cluster) Get(ctx context.Context, res policy.Resource, namespace, name 
 		obj, err = c.dynamic.Resource(gvr).Get(ctx, name, metav1.GetOptions{}, subresourceArgs(res)...)
 	}
 	if err != nil {
-		return nil, safeError(err)
+		return nil, c.safeAPIError(err)
 	}
 	return obj, nil
 }
@@ -177,7 +183,7 @@ func (c *Cluster) List(ctx context.Context, res policy.Resource, namespace, labe
 		list, err = c.dynamic.Resource(gvr).List(ctx, opts)
 	}
 	if err != nil {
-		return nil, safeError(err)
+		return nil, c.safeAPIError(err)
 	}
 	return list.Items, nil
 }
@@ -191,7 +197,7 @@ func (c *Cluster) NamespaceMarked(ctx context.Context, namespace, label string) 
 	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}
 	obj, err := c.dynamic.Resource(gvr).Get(ctx, namespace, metav1.GetOptions{})
 	if err != nil {
-		return false, safeError(err)
+		return false, c.safeAPIError(err)
 	}
 	_, marked := obj.GetLabels()[label]
 	return marked, nil
@@ -223,6 +229,18 @@ func (c *Cluster) resolveGVR(ctx context.Context, res policy.Resource) (schema.G
 		return schema.GroupVersionResource{}, false, fmt.Errorf("%w: %s", ErrUnknownResource, res)
 	}
 	return gvr, namespaced, nil
+}
+
+// safeAPIError maps an API error to a safe sentinel and preserves a
+// credential-plugin failure as an actionable CredentialError (ADR 0007).
+func (c *Cluster) safeAPIError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if c.credentialPlugin != "" && isCredentialPluginError(err) {
+		return &CredentialError{Plugin: c.credentialPlugin}
+	}
+	return safeError(err)
 }
 
 // subresourceArgs returns the dynamic client subresource path segments for res.
@@ -257,7 +275,9 @@ func (s discoveryClientSource) resources(ctx context.Context) ([]*metav1.APIGrou
 			}
 			return groups, lists, true, nil
 		}
-		return nil, nil, false, safeError(err)
+		// Return the raw error so load can classify a credential-plugin failure
+		// before mapping it to a sentinel.
+		return nil, nil, false, err
 	}
 	return groups, lists, false, nil
 }

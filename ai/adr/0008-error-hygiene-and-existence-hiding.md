@@ -20,6 +20,9 @@ the denial itself confirms that the object exists.
   one** ("not found"). The precise reason is logged server-side only.
 - A `get` returns the object that was fetched and authorized; there is no second fetch (no time-of-check /
   time-of-use gap).
+- An **authentication failure** is an operational error, not a denial: no object was fetched, so reporting
+  it distinctly cannot act as an existence oracle. The server surfaces `cluster authentication failed`
+  (with a re-authentication hint) instead of the generic `could not resolve resource`.
 - For `list`, hidden items are counted server-side only. The response contains neither the hidden count nor
   any per-item denial reason.
 

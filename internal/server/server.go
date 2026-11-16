@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -218,6 +219,8 @@ func canonicalizeResolve(ctx context.Context, cluster Cluster, raw string) (poli
 // the method specs. It never leaks the discovery error body.
 func resourceError(raw string, err error) error {
 	switch {
+	case errors.Is(err, kube.ErrCredentialsUnavailable):
+		return credentialError(err)
 	case errors.Is(err, kube.ErrAmbiguousResource):
 		return fmt.Errorf("ambiguous resource: %s", raw)
 	case errors.Is(err, kube.ErrUnknownResource),
@@ -233,6 +236,8 @@ func resourceError(raw string, err error) error {
 // inspection. An unresolved resource stays "unknown resource".
 func resourceInspectionError(raw string, err error) error {
 	switch {
+	case errors.Is(err, kube.ErrCredentialsUnavailable):
+		return credentialError(err)
 	case errors.Is(err, kube.ErrAmbiguousResource):
 		return fmt.Errorf("ambiguous resource: %s", raw)
 	case errors.Is(err, kube.ErrUnknownResource),
@@ -250,6 +255,8 @@ func mapKubeError(err error) error {
 	switch {
 	case errors.Is(err, kube.ErrNotFound):
 		return errNotFound
+	case errors.Is(err, kube.ErrCredentialsUnavailable):
+		return credentialError(err)
 	case errors.Is(err, kube.ErrForbidden):
 		return withStatus("forbidden", kube.HTTPStatus(err))
 	case errors.Is(err, kube.ErrUnauthorized):
@@ -259,6 +266,20 @@ func mapKubeError(err error) error {
 	default:
 		return withStatus("request failed", kube.HTTPStatus(err))
 	}
+}
+
+// credentialError maps a credential-plugin failure to an actionable message. It
+// names the plugin command but never includes plugin output, kubeconfig paths or
+// the wrapped error (ADR 0007).
+func credentialError(err error) error {
+	var cred *kube.CredentialError
+	if !errors.As(err, &cred) || cred.Plugin == "" {
+		return errors.New("cluster authentication failed: the configured credential plugin could not provide credentials; re-authenticate and retry")
+	}
+	if strings.Contains(cred.Plugin, "gcloud") {
+		return errors.New(`cluster authentication failed: the gcloud credential plugin could not provide a token (the login may have expired); run "gcloud auth login" and retry`)
+	}
+	return fmt.Errorf("cluster authentication failed: the %q credential plugin could not provide credentials; re-authenticate and retry", cred.Plugin)
 }
 
 // withStatus appends the HTTP status to a safe message when one is known.

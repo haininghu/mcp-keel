@@ -3,6 +3,7 @@ package kube
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,6 +101,37 @@ func TestClusterGet(t *testing.T) {
 
 	if _, err := cluster.Get(ctx, policy.Resource{Name: "pods"}, "default", "missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Get missing error = %v, want not found", err)
+	}
+}
+
+func TestDiscoveryCredentialPluginFailureIsClassified(t *testing.T) {
+	c := testCluster(nil, false)
+	c.credentialPlugin = "gcloud"
+	c.source = fakeSource{err: errors.New(`Get "https://example/api": exec: executable gcloud failed with exit code 1`)}
+
+	_, err := c.state(context.Background(), false)
+	if !errors.Is(err, ErrCredentialsUnavailable) {
+		t.Fatalf("state error = %v, want ErrCredentialsUnavailable", err)
+	}
+	var cred *CredentialError
+	if !errors.As(err, &cred) || cred.Plugin != "gcloud" {
+		t.Fatalf("state error = %v, want CredentialError for gcloud", err)
+	}
+	if strings.Contains(err.Error(), "Reauthentication") {
+		t.Fatalf("state error leaked plugin output: %q", err.Error())
+	}
+}
+
+func TestDiscoveryFailureWithoutExecPluginIsNotMisclassified(t *testing.T) {
+	c := testCluster(nil, false)
+	c.source = fakeSource{err: errors.New("dial tcp: connection refused")}
+
+	_, err := c.state(context.Background(), false)
+	if errors.Is(err, ErrCredentialsUnavailable) {
+		t.Fatalf("state error = %v, want a generic request failure", err)
+	}
+	if !errors.Is(err, ErrRequestFailed) {
+		t.Fatalf("state error = %v, want ErrRequestFailed", err)
 	}
 }
 

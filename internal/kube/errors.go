@@ -3,6 +3,7 @@ package kube
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -36,11 +37,49 @@ var (
 	// unqualified resource name was denied fail-closed (ADR 0012, ADR 0014).
 	ErrPartialDiscovery = errors.New("discovery partial")
 
+	// ErrCredentialsUnavailable reports that the kubeconfig's credential plugin
+	// could not provide credentials, for example because its login expired. It
+	// carries only a safe classification, never plugin output (ADR 0007).
+	ErrCredentialsUnavailable = errors.New("kube: credentials unavailable")
+
 	// ErrUnknownProvider reports an unknown provider name.
 	ErrUnknownProvider = errors.New("kube: unknown provider")
 	// ErrUnknownContext reports a context outside a provider's contexts.
 	ErrUnknownContext = errors.New("kube: unknown context")
 )
+
+// CredentialError is the classified form of a credential-plugin failure. It
+// names the configured plugin command (its base name) so the agent can act on
+// it, but deliberately drops the wrapped error: the plugin's output may contain
+// secret material (ADR 0007).
+type CredentialError struct {
+	// Plugin is the base name of the configured credential plugin command, or
+	// empty when it is unknown.
+	Plugin string
+}
+
+// Error renders the safe classification without plugin output.
+func (e *CredentialError) Error() string {
+	if e.Plugin == "" {
+		return ErrCredentialsUnavailable.Error()
+	}
+	return fmt.Sprintf("kube: credential plugin %q failed", e.Plugin)
+}
+
+// Unwrap returns the sentinel so errors.Is matches ErrCredentialsUnavailable.
+func (e *CredentialError) Unwrap() error { return ErrCredentialsUnavailable }
+
+// isCredentialPluginError reports whether err came from a kubeconfig exec
+// credential plugin. client-go reports these as plain formatted errors (it
+// discards the *exec.ExitError type), so the stable message markers are matched.
+// It is only consulted when the context is known to use an exec plugin.
+func isCredentialPluginError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "exec: executable") || strings.Contains(msg, "exec plugin")
+}
 
 // safeError maps a client-go API error to a sentinel-based error that never
 // contains a server response body. Only the HTTP status code is preserved, and

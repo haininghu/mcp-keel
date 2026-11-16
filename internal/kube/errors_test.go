@@ -2,6 +2,7 @@ package kube
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -36,5 +37,18 @@ func TestHTTPStatusTyped(t *testing.T) {
 	}
 	if got := HTTPStatus(ErrNotFound); got != 0 {
 		t.Fatalf("HTTPStatus(ErrNotFound) = %d, want 0", got)
+	}
+}
+
+func TestCredentialErrorIsSafeAndClassified(t *testing.T) {
+	err := &CredentialError{Plugin: "gcloud"}
+	if !errors.Is(err, ErrCredentialsUnavailable) {
+		t.Fatalf("CredentialError = %v, want ErrCredentialsUnavailable", err)
+	}
+	if got := err.Error(); got != `kube: credential plugin "gcloud" failed` {
+		t.Fatalf("Error() = %q", got)
+	}
+	if strings.Contains(err.Error(), "Reauthentication") {
+		t.Fatalf("Error() leaked plugin output: %q", err.Error())
 	}
 }

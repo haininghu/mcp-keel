@@ -70,3 +70,6 @@ not-found.
   `items` list with `truncated: false` — not an error, so existence is not disclosed.
 - `forbidden` (with HTTP status) — the kubeconfig identity lacks RBAC list permission.
 - `ambiguous resource` / `unknown resource` — canonicalisation failed.
+- `cluster authentication failed` — a kubeconfig exec credential plugin could not provide credentials (for
+  example an expired `gcloud` login). The message names the plugin and suggests re-authenticating; it never
+  includes plugin output.

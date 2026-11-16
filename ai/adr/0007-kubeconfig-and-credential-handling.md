@@ -22,6 +22,10 @@ be treated as trusted configuration, and its contents must never reach the agent
 - The server's **own credentials** (kubeconfig tokens, client certificates and keys, exec plugin output)
   and response bodies are **never logged and never returned** by any tool. Errors surface only a safe
   message and, where useful, an HTTP status.
+- A **credential-plugin failure** is classified separately from an unknown resource: the tool reports
+  `cluster authentication failed` together with the plugin command's base name (for example `gcloud`) and a
+  re-authentication hint. The plugin's output and the wrapped error are never included, because they may
+  contain secret material.
 - **Object content** is returned as stored by the API, including `Secret.data` when `secrets:get` is
   explicitly granted (see ADR 0013). Redacting object content is deferred to a later stage.
 - Config secrets use a redacting `Secret` type so that `fmt`, `slog`, JSON and YAML dumps of the config are

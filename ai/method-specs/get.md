@@ -63,3 +63,6 @@ capabilities and filters) overrides any `allow` rule that appears later.
 - `ambiguous resource: <name>` — the name matches more than one group; use `group/resource` or
   `core/resource` (ADR 0012).
 - `unknown resource: <name>` — the resource could not be resolved, or does not support `get`.
+- `cluster authentication failed` — a kubeconfig exec credential plugin could not provide credentials (for
+  example an expired `gcloud` login). The message names the plugin and suggests re-authenticating; it never
+  includes plugin output.

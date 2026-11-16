@@ -1094,6 +1094,45 @@ func TestUnauthorizedCarriesHTTPStatus(t *testing.T) {
 	}
 }
 
+func TestCredentialPluginFailureIsActionable(t *testing.T) {
+	cfg := baseConfig([]config.RuleConfig{allowRule([]string{"ns"}, grant("pods", policy.VerbGet))})
+	cluster := baseCluster()
+	cluster.canonicalErr = map[string]error{"pods": &kube.CredentialError{Plugin: "gcloud"}}
+	env := newTestEnv(t, cfg, cluster)
+
+	message := env.callErr("get", getArgs("pods", "ns", "frontend-1"))
+	if !strings.Contains(message, "gcloud auth login") {
+		t.Fatalf("error = %q, want the gcloud re-authentication hint", message)
+	}
+	if strings.Contains(message, "could not resolve resource") {
+		t.Fatalf("error = %q, must not be the generic discovery failure", message)
+	}
+}
+
+func TestCredentialPluginFailureDuringFetchIsActionable(t *testing.T) {
+	cfg := baseConfig([]config.RuleConfig{allowRule([]string{"ns"}, grant("pods", policy.VerbGet))})
+	cluster := baseCluster()
+	cluster.getErr = &kube.CredentialError{Plugin: "gcloud"}
+	env := newTestEnv(t, cfg, cluster)
+
+	message := env.callErr("get", getArgs("pods", "ns", "frontend-1"))
+	if !strings.Contains(message, "gcloud auth login") {
+		t.Fatalf("error = %q, want the gcloud re-authentication hint", message)
+	}
+}
+
+func TestCredentialPluginFailureWithoutNameStaysGeneric(t *testing.T) {
+	cfg := baseConfig([]config.RuleConfig{allowRule([]string{"ns"}, grant("pods", policy.VerbGet))})
+	cluster := baseCluster()
+	cluster.canonicalErr = map[string]error{"pods": &kube.CredentialError{}}
+	env := newTestEnv(t, cfg, cluster)
+
+	message := env.callErr("get", getArgs("pods", "ns", "frontend-1"))
+	if !strings.Contains(message, "credential plugin") || !strings.Contains(message, "re-authenticate") {
+		t.Fatalf("error = %q, want a generic credential-plugin message", message)
+	}
+}
+
 func TestEmptyRequiredFieldsRejected(t *testing.T) {
 	env := newTestEnv(t, baseConfig(nil), baseCluster())
 

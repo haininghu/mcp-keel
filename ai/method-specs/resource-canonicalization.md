@@ -62,5 +62,8 @@ A capability valid in one cluster may be unknown in another; the request is deni
 
 - `ambiguous resource: <name>` - more than one group matches an unqualified name.
 - `unknown resource: <name>` - no candidate, or the resource does not support the verb.
+- `cluster authentication failed` - discovery itself failed because a kubeconfig exec credential plugin
+  could not provide credentials; resolve the plugin's login and retry (ADR 0007, ADR 0014).
 
-Both are request-shape errors, not policy denials; they are reported as such and never as "not found".
+The first two are request-shape errors, not policy denials; they are reported as such and never as
+"not found". The third is an operational error and is not a denial either.

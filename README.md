@@ -128,8 +128,9 @@ Key rules:
 - The **config is the trust boundary.** Kubeconfig paths come from the config, never from tool input, and
   may contain exec credential plugins (arbitrary code execution).
 - The server's **own credentials** (kubeconfig tokens, certificates, exec plugin output) are never logged
-  or returned; a config dump is redacted. Object content is returned as stored (content redaction, for
-  secrets and other resources, is planned for a later stage).
+  or returned; a config dump is redacted. A credential-plugin failure is surfaced only as a secret-free
+  classification (plugin name plus a re-authentication hint), never as plugin output. Object content is
+  returned as stored (content redaction, for secrets and other resources, is planned for a later stage).
 - Authorization happens **before** the cluster call, and any error fails **closed**.
 - Listed objects are evaluated **per item** by the ordered rules (namespace + labels); hidden items are
   counted server-side only, never returned.

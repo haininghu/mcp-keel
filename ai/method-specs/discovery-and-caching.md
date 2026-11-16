@@ -15,14 +15,15 @@ Resolve a resource identifier to a canonical form (ADR 0012) and to a GVR for th
 
 ## Kubernetes API call(s)
 
-- Discovery: `ServerPreferredResources` (and `ServerGroups`) against the context's discovery client.
+- Discovery: `ServerGroupsAndResources` against the context's discovery client (it keeps subresource
+  entries such as `pods/log`, which `ServerPreferredResources` omits).
 - No object calls here; this only resolves identifiers.
 
 ## Behavior
 
 1. Look up the cached discovery state for `(provider, context)`. If absent or older than
    `discovery_cache_ttl`, load it.
-2. Load: call `ServerPreferredResources`. If it returns `ErrGroupDiscoveryFailed`, keep the returned
+2. Load: call `ServerGroupsAndResources`. If it returns `ErrGroupDiscoveryFailed`, keep the returned
    (partial) resource lists and log the failed groups server-side only.
 3. Build the RESTMapper from the resource lists and cache it.
 4. Resolve the identifier with the algorithm in `resource-canonicalization.md`.
@@ -44,5 +45,8 @@ Resolve a resource identifier to a canonical form (ADR 0012) and to a GVR for th
 
 - `unknown resource: <name>` - not resolved, or does not support the verb.
 - `ambiguous resource: <name>` - more than one group matches an unqualified name.
+- `cluster authentication failed` - a kubeconfig exec credential plugin could not provide credentials
+  (for example an expired `gcloud` login). The message names the plugin and suggests re-authenticating; it
+  never includes plugin output. This is an operational error, not a request-shape error or a denial.
 
-Both are request-shape errors, not policy denials.
+The first two are request-shape errors, not policy denials.
