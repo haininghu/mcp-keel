@@ -37,10 +37,16 @@ const (
 	defaultMaxListItems         = 500
 	defaultMaxObjectBytes       = 1 << 20
 	defaultMaxResponseBytes     = 8 << 20
+	defaultMaxLogBytes          = 256 << 10
+	defaultMaxLogLines          = 500
 	defaultNamespaceMarkerLabel = "mcp-keel.io/noai"
 
 	// maxListItemsLimit is the hard upper bound for server.max_list_items.
 	maxListItemsLimit = 1000
+	// maxLogBytesLimit is the hard upper bound for server.max_log_bytes.
+	maxLogBytesLimit = 16 << 20
+	// maxLogLinesLimit is the hard upper bound for server.max_log_lines.
+	maxLogLinesLimit = 10000
 )
 
 // LogLevel is a server log verbosity level.
@@ -89,6 +95,12 @@ type ServerConfig struct {
 	MaxObjectBytes int
 	// MaxResponseBytes bounds the whole serialized response.
 	MaxResponseBytes int
+	// MaxLogBytes is the maximum number of bytes returned by a single pod log
+	// read.
+	MaxLogBytes int
+	// MaxLogLines is the default and maximum number of tailLines for the logs
+	// tool.
+	MaxLogLines int
 	// Kubeconfig is the default kubeconfig path (already expanded).
 	Kubeconfig string
 	// AdditionalSensitiveResources extends the built-in sensitive set.
@@ -164,6 +176,8 @@ type rawServer struct {
 	MaxListItems                 *int               `yaml:"max_list_items"`
 	MaxObjectBytes               *int               `yaml:"max_object_bytes"`
 	MaxResponseBytes             *int               `yaml:"max_response_bytes"`
+	MaxLogBytes                  *int               `yaml:"max_log_bytes"`
+	MaxLogLines                  *int               `yaml:"max_log_lines"`
 	Kubeconfig                   string             `yaml:"kubeconfig"`
 	AdditionalSensitiveResources []string           `yaml:"additional_sensitive_resources"`
 	NamespaceMarker              rawNamespaceMarker `yaml:"namespace_marker"`
@@ -251,6 +265,8 @@ func applyServerDefaults(raw *rawServer) ServerConfig {
 		MaxListItems:                 defaultMaxListItems,
 		MaxObjectBytes:               defaultMaxObjectBytes,
 		MaxResponseBytes:             defaultMaxResponseBytes,
+		MaxLogBytes:                  defaultMaxLogBytes,
+		MaxLogLines:                  defaultMaxLogLines,
 		Kubeconfig:                   expandPath(raw.Kubeconfig),
 		AdditionalSensitiveResources: raw.AdditionalSensitiveResources,
 		NamespaceMarker: NamespaceMarkerConfig{
@@ -287,6 +303,12 @@ func applyServerDefaults(raw *rawServer) ServerConfig {
 	}
 	if raw.MaxResponseBytes != nil {
 		server.MaxResponseBytes = *raw.MaxResponseBytes
+	}
+	if raw.MaxLogBytes != nil {
+		server.MaxLogBytes = *raw.MaxLogBytes
+	}
+	if raw.MaxLogLines != nil {
+		server.MaxLogLines = *raw.MaxLogLines
 	}
 	if server.NamespaceMarker.Label == "" {
 		server.NamespaceMarker.Label = defaultNamespaceMarkerLabel
@@ -354,6 +376,16 @@ func (s *ServerConfig) validate() error {
 	}
 	if s.MaxResponseBytes <= 0 {
 		return fmt.Errorf("max_response_bytes: must be > 0, got %d", s.MaxResponseBytes)
+	}
+	if s.MaxLogBytes <= 0 || s.MaxLogBytes > maxLogBytesLimit {
+		return fmt.Errorf("max_log_bytes: must be > 0 and <= %d, got %d", maxLogBytesLimit, s.MaxLogBytes)
+	}
+	if s.MaxLogLines <= 0 || s.MaxLogLines > maxLogLinesLimit {
+		return fmt.Errorf("max_log_lines: must be > 0 and <= %d, got %d", maxLogLinesLimit, s.MaxLogLines)
+	}
+	if s.MaxLogBytes >= s.MaxResponseBytes {
+		return fmt.Errorf("max_log_bytes: must be less than max_response_bytes (%d), got %d",
+			s.MaxResponseBytes, s.MaxLogBytes)
 	}
 	for i, resource := range s.AdditionalSensitiveResources {
 		if err := validateResourceSyntax(resource, false); err != nil {

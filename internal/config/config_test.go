@@ -145,6 +145,15 @@ func TestParseInvalid(t *testing.T) {
 		"max list items too big":   strings.Replace(goodConfig, "log_level: info", "log_level: info\n  max_list_items: 1001", 1),
 		"max object bytes zero":    strings.Replace(goodConfig, "log_level: info", "log_level: info\n  max_object_bytes: 0", 1),
 		"max response bytes zero":  strings.Replace(goodConfig, "log_level: info", "log_level: info\n  max_response_bytes: 0", 1),
+		"max log bytes zero":       strings.Replace(goodConfig, "log_level: info", "log_level: info\n  max_log_bytes: 0", 1),
+		"max log bytes negative":   strings.Replace(goodConfig, "log_level: info", "log_level: info\n  max_log_bytes: -1", 1),
+		"max log bytes too big": strings.Replace(goodConfig, "log_level: info",
+			"log_level: info\n  max_log_bytes: 16777217", 1),
+		"max log bytes equals response budget": strings.Replace(goodConfig, "log_level: info",
+			"log_level: info\n  max_response_bytes: 262144\n  max_log_bytes: 262144", 1),
+		"max log lines zero":       strings.Replace(goodConfig, "log_level: info", "log_level: info\n  max_log_lines: 0", 1),
+		"max log lines negative":   strings.Replace(goodConfig, "log_level: info", "log_level: info\n  max_log_lines: -5", 1),
+		"max log lines too big":    strings.Replace(goodConfig, "log_level: info", "log_level: info\n  max_log_lines: 10001", 1),
 		"no providers":             "version: 1\nserver: {}\n",
 		"empty provider name":      strings.Replace(goodConfig, "name: p", "name: \"\"", 1),
 		"empty contexts":           strings.Replace(goodConfig, "contexts: [\"*\"]", "contexts: []", 1),
@@ -263,6 +272,36 @@ func TestServerDiscoveryCacheTTLZeroDisables(t *testing.T) {
 	}
 }
 
+func TestServerLogBounds(t *testing.T) {
+	t.Run("defaults", func(t *testing.T) {
+		cfg, err := Parse([]byte(goodConfig))
+		if err != nil {
+			t.Fatalf("Parse() error = %v", err)
+		}
+		if cfg.Server.MaxLogBytes != 262144 {
+			t.Errorf("MaxLogBytes = %d, want 262144", cfg.Server.MaxLogBytes)
+		}
+		if cfg.Server.MaxLogLines != 500 {
+			t.Errorf("MaxLogLines = %d, want 500", cfg.Server.MaxLogLines)
+		}
+	})
+
+	t.Run("explicit", func(t *testing.T) {
+		input := strings.Replace(goodConfig, "log_level: info",
+			"log_level: info\n  max_log_bytes: 1048576\n  max_log_lines: 1000", 1)
+		cfg, err := Parse([]byte(input))
+		if err != nil {
+			t.Fatalf("Parse() error = %v", err)
+		}
+		if cfg.Server.MaxLogBytes != 1048576 {
+			t.Errorf("MaxLogBytes = %d, want 1048576", cfg.Server.MaxLogBytes)
+		}
+		if cfg.Server.MaxLogLines != 1000 {
+			t.Errorf("MaxLogLines = %d, want 1000", cfg.Server.MaxLogLines)
+		}
+	})
+}
+
 func TestParseEmpty(t *testing.T) {
 	if _, err := Parse(nil); err == nil {
 		t.Fatal("Parse(nil) error = nil, want an error")
@@ -318,6 +357,9 @@ func assertServerDefaults(t *testing.T, s *ServerConfig) {
 	if s.MaxListItems != defaultMaxListItems || s.MaxObjectBytes != defaultMaxObjectBytes ||
 		s.MaxResponseBytes != defaultMaxResponseBytes {
 		t.Errorf("max limits = %d/%d/%d", s.MaxListItems, s.MaxObjectBytes, s.MaxResponseBytes)
+	}
+	if s.MaxLogBytes != defaultMaxLogBytes || s.MaxLogLines != defaultMaxLogLines {
+		t.Errorf("max log limits = %d/%d", s.MaxLogBytes, s.MaxLogLines)
 	}
 	if s.NamespaceMarker.Label != defaultNamespaceMarkerLabel {
 		t.Errorf("NamespaceMarker.Label = %q", s.NamespaceMarker.Label)
