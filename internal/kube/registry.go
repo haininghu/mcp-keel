@@ -16,8 +16,10 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -158,6 +160,10 @@ func (r *Registry) buildCluster(p *provider, contextName string) (*Cluster, erro
 	if err != nil {
 		return nil, fmt.Errorf("provider %q: context %q: build dynamic client: %w", p.cfg.Name, contextName, err)
 	}
+	logClient, err := newLogClient(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("provider %q: context %q: build log client: %w", p.cfg.Name, contextName, err)
+	}
 	discoveryConfig := rest.CopyConfig(restConfig)
 	discoveryConfig.Timeout = time.Duration(r.providerDiscoveryTimeout(p))
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(discoveryConfig)
@@ -168,6 +174,7 @@ func (r *Registry) buildCluster(p *provider, contextName string) (*Cluster, erro
 		provider:         p.cfg.Name,
 		context:          contextName,
 		dynamic:          dynamicClient,
+		logs:             logClient,
 		credentialPlugin: credentialPluginName(clientConfig, contextName),
 		source: discoveryClientSource{
 			client: discoveryClient,
@@ -176,6 +183,19 @@ func (r *Registry) buildCluster(p *provider, contextName string) (*Cluster, erro
 		cacheTTL: time.Duration(r.providerCacheTTL(p)),
 		now:      time.Now,
 	}, nil
+}
+
+// newLogClient builds a core-v1 REST client from cfg. It is needed because the
+// dynamic client cannot read subresource streams such as pod logs, and it
+// deliberately avoids the typed clientset so the binary stays lean. The config
+// already carries credentials (including exec plugins), QPS/Burst and the
+// request timeout, so no extra auth wiring happens here.
+func newLogClient(cfg *rest.Config) (rest.Interface, error) {
+	c := rest.CopyConfig(cfg)
+	c.GroupVersion = &corev1.SchemeGroupVersion
+	c.APIPath = "/api"
+	c.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
+	return rest.RESTClientFor(c)
 }
 
 // credentialPluginName returns the base name of the context's exec credential

@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 
 	"github.com/haininghu/mcp-keel/internal/policy"
 )
@@ -26,7 +27,10 @@ type Cluster struct {
 	context  string
 
 	dynamic dynamic.Interface
-	source  discoverySource
+	// logs is a core-v1 REST client used for subresource streams that the
+	// dynamic client cannot read, such as pod logs.
+	logs   rest.Interface
+	source discoverySource
 
 	// credentialPlugin is the base name of the context's exec credential
 	// plugin command, or empty when the context uses no exec plugin. It is used
