@@ -1,6 +1,6 @@
 // Package server exposes the mcp-keel read-only Kubernetes tools over MCP. It
-// wires the configuration, the policy engine and the kube backend into four
-// tools (get, list, list_configured_rules, list_clusters). Every
+// wires the configuration, the policy engine and the kube backend into five
+// tools (get, list, logs, list_configured_rules, list_clusters). Every
 // capability-gated tool canonicalises the resource, authorizes the request and
 // only then touches the cluster; denied, filter-excluded and marker-protected
 // objects are reported exactly like non-existent ones (ADR 0008, ADR 0013).
@@ -20,6 +20,7 @@ import (
 	"github.com/haininghu/mcp-keel/internal/config"
 	"github.com/haininghu/mcp-keel/internal/kube"
 	"github.com/haininghu/mcp-keel/internal/policy"
+	"github.com/haininghu/mcp-keel/internal/redact"
 )
 
 // errNotFound is the single, existence-hiding failure returned for a denied or
@@ -50,6 +51,8 @@ type Cluster interface {
 	Get(ctx context.Context, res policy.Resource, namespace, name string) (*unstructured.Unstructured, error)
 	// List fetches a bounded window of objects.
 	List(ctx context.Context, res policy.Resource, namespace, labelSelector string, limit int) ([]unstructured.Unstructured, error)
+	// Logs reads a bounded window of a pod's log. It never follows the stream.
+	Logs(ctx context.Context, namespace, pod string, opts kube.LogOptions) ([]byte, error)
 	// NamespaceMarked reports whether the namespace carries the marker label.
 	NamespaceMarked(ctx context.Context, namespace, label string) (bool, error)
 }
@@ -103,6 +106,7 @@ type Server struct {
 
 	policyMu    sync.Mutex
 	policyByKey map[policyKey]*policy.Policy
+	redactions  map[policyKey]*redact.Engine
 }
 
 // New constructs a Server. A nil logger discards all log output. The returned
@@ -121,10 +125,11 @@ func New(cfg *config.Config, registry ClusterRegistry, logger *slog.Logger) *Ser
 		logger:      logger,
 		providers:   providers,
 		policyByKey: make(map[policyKey]*policy.Policy),
+		redactions:  make(map[policyKey]*redact.Engine),
 	}
 }
 
-// MCPServer builds an mcp.Server with all four tools registered. version is
+// MCPServer builds an mcp.Server with all five tools registered. version is
 // advertised to clients and is typically injected at build time.
 func (s *Server) MCPServer(version string) *mcp.Server {
 	mcpSrv := mcp.NewServer(&mcp.Implementation{Name: s.cfg.Server.Name, Version: version}, nil)
@@ -138,6 +143,11 @@ func (s *Server) MCPServer(version string) *mcp.Server {
 		Name:        "list",
 		Description: "List Kubernetes objects, under policy, with per-item authorization. Requires the resource:list capability; items the caller may not see are omitted.",
 	}, s.handleList)
+
+	mcp.AddTool(mcpSrv, &mcp.Tool{
+		Name:        "logs",
+		Description: "Read a bounded window of a pod's log, under policy. Requires the pods/log:get capability; denied or non-existent pods are reported identically as not found. The stream is never followed.",
+	}, s.handleLogs)
 
 	mcp.AddTool(mcpSrv, &mcp.Tool{
 		Name:        "list_configured_rules",
@@ -169,6 +179,19 @@ type listInput struct {
 	Namespace     string `json:"namespace,omitempty" jsonschema:"namespace; omitted means all namespaces for a namespaced resource and is rejected for a cluster-scoped one"`
 	LabelSelector string `json:"labelSelector,omitempty" jsonschema:"optional label selector passed to the API server; it never replaces the policy label check"`
 	Limit         int    `json:"limit,omitempty" jsonschema:"optional maximum number of items; clamped to the configured server limit"`
+}
+
+// logsInput is the argument object of the logs tool.
+type logsInput struct {
+	Provider     string `json:"provider" jsonschema:"logical provider name"`
+	Context      string `json:"context" jsonschema:"kubeconfig context; must match the provider's contexts"`
+	Namespace    string `json:"namespace" jsonschema:"namespace of the pod"`
+	Pod          string `json:"pod" jsonschema:"pod name"`
+	Container    string `json:"container,omitempty" jsonschema:"container name; required when the pod has more than one container"`
+	Previous     bool   `json:"previous,omitempty" jsonschema:"read the previous instance log of a restarted container"`
+	Timestamps   bool   `json:"timestamps,omitempty" jsonschema:"prefix each line with an RFC3339 timestamp"`
+	TailLines    int    `json:"tailLines,omitempty" jsonschema:"number of lines from the end; clamped to server.max_log_lines"`
+	SinceSeconds int    `json:"sinceSeconds,omitempty" jsonschema:"only return lines newer than this many seconds"`
 }
 
 // resolveRegistry resolves and validates a provider/context pair, mapping the

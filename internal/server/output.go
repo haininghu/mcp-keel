@@ -33,6 +33,18 @@ type listOutput struct {
 	Truncated bool   `json:"truncated"`
 }
 
+// logsOutput is the logs response envelope (method-specs/logs.md).
+type logsOutput struct {
+	Provider  string `json:"provider"`
+	Context   string `json:"context"`
+	Resource  string `json:"resource"`
+	Namespace string `json:"namespace"`
+	Pod       string `json:"pod"`
+	Container string `json:"container"`
+	Content   string `json:"content"`
+	Truncated bool   `json:"truncated"`
+}
+
 // pruneObject returns a shallow copy of the object with
 // metadata.managedFields removed. It never mutates the fetched object.
 func pruneObject(obj *unstructured.Unstructured) map[string]any {
@@ -92,12 +104,11 @@ func copyKey(dst, src map[string]any, key string) {
 	}
 }
 
-// shapeGet prunes the fetched object and reduces it until it satisfies both
-// server.max_object_bytes (per object) and server.max_response_bytes (whole
+// shapeGet reduces an already pruned and redacted object until it satisfies
+// both server.max_object_bytes (per object) and server.max_response_bytes (whole
 // response). truncated is true whenever the object was reduced.
-func (s *Server) shapeGet(provider, contextName string, res policy.Resource, namespace, name string, obj *unstructured.Unstructured) getOutput {
-	pruned := pruneObject(obj)
-	levels := []map[string]any{pruned, objectSkeleton(pruned), objectMinimal(pruned)}
+func (s *Server) shapeGet(provider, contextName string, res policy.Resource, namespace, name string, obj map[string]any) getOutput {
+	levels := []map[string]any{obj, objectSkeleton(obj), objectMinimal(obj)}
 
 	level := 0
 	for level < len(levels)-1 {
@@ -127,18 +138,17 @@ func (s *Server) shapeGet(provider, contextName string, res policy.Resource, nam
 	}
 }
 
-// fitObject reduces a pruned object to fit server.max_object_bytes and reports
-// whether the object was reduced.
-func (s *Server) fitObject(obj *unstructured.Unstructured) (map[string]any, bool) {
-	pruned := pruneObject(obj)
-	if marshalSize(pruned) <= s.cfg.Server.MaxObjectBytes {
-		return pruned, false
+// fitObject reduces an already pruned and redacted object to fit
+// server.max_object_bytes and reports whether the object was reduced.
+func (s *Server) fitObject(obj map[string]any) (map[string]any, bool) {
+	if marshalSize(obj) <= s.cfg.Server.MaxObjectBytes {
+		return obj, false
 	}
-	skeleton := objectSkeleton(pruned)
+	skeleton := objectSkeleton(obj)
 	if marshalSize(skeleton) <= s.cfg.Server.MaxObjectBytes {
 		return skeleton, true
 	}
-	return objectMinimal(pruned), true
+	return objectMinimal(obj), true
 }
 
 // marshalSize returns the serialized size of v, or maxJSONSize when v cannot be

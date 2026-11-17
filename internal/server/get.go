@@ -10,8 +10,10 @@ import (
 )
 
 // handleGet implements the get tool: resolve, canonicalise, validate scope,
-// pre-check, fetch, evaluate, apply the namespace marker, then shape output.
-// Any denial is reported as "not found" (ADR 0008).
+// pre-check, fetch, evaluate, apply the namespace marker, redact, then shape
+// output. Any denial is reported as "not found" (ADR 0008). A redaction cap
+// breach also answers "not found" so unredacted content is never returned
+// (ADR 0015).
 //
 //nolint:gocritic // hugeParam: MCP SDK handler signature
 func (s *Server) handleGet(ctx context.Context, _ *mcp.CallToolRequest, in getInput) (*mcp.CallToolResult, any, error) {
@@ -108,5 +110,19 @@ func (s *Server) handleGet(ctx context.Context, _ *mcp.CallToolRequest, in getIn
 		}
 	}
 
-	return jsonResult(s.shapeGet(in.Provider, in.Context, res, in.Namespace, in.Name, obj))
+	engine, err := s.redactionFor(ctx, in.Provider, in.Context, cluster)
+	if err != nil {
+		return nil, nil, err
+	}
+	object, err := engine.ApplyObject(pruneObject(obj),
+		redactionMatch(res, in.Namespace, namespaced, in.Name, obj.GetLabels()))
+	if err != nil {
+		// A cap breach fails closed: the object is never returned unredacted.
+		s.logger.Error("redaction failed; denying",
+			"provider", in.Provider, "context", in.Context, "resource", res.String(),
+			"namespace", in.Namespace, "name", in.Name)
+		return nil, nil, errNotFound
+	}
+
+	return jsonResult(s.shapeGet(in.Provider, in.Context, res, in.Namespace, in.Name, object))
 }

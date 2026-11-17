@@ -35,6 +35,9 @@ type fakeCluster struct {
 	listItems []unstructured.Unstructured
 	listErr   error
 
+	logsData []byte
+	logsErr  error
+
 	marked    map[string]bool
 	markerErr error
 
@@ -42,9 +45,13 @@ type fakeCluster struct {
 	canonicalAllCalls int
 	getCalls          int
 	listCalls         int
+	logsCalls         int
 	markerCalls       int
 	lastListLimit     int
 	lastListNamespace string
+	lastLogsNamespace string
+	lastLogsPod       string
+	lastLogOptions    kube.LogOptions
 }
 
 func (f *fakeCluster) Canonicalize(_ context.Context, raw string) (policy.Resource, bool, error) {
@@ -117,6 +124,17 @@ func (f *fakeCluster) List(_ context.Context, _ policy.Resource, namespace, _ st
 		items = items[:limit]
 	}
 	return items, nil
+}
+
+func (f *fakeCluster) Logs(_ context.Context, namespace, pod string, opts kube.LogOptions) ([]byte, error) {
+	f.logsCalls++
+	f.lastLogsNamespace = namespace
+	f.lastLogsPod = pod
+	f.lastLogOptions = opts
+	if f.logsErr != nil {
+		return nil, f.logsErr
+	}
+	return f.logsData, nil
 }
 
 func (f *fakeCluster) NamespaceMarked(_ context.Context, namespace, _ string) (bool, error) {
@@ -240,6 +258,8 @@ func baseConfig(rules []config.RuleConfig) *config.Config {
 			MaxListItems:     500,
 			MaxObjectBytes:   1 << 20,
 			MaxResponseBytes: 8 << 20,
+			MaxLogBytes:      262144,
+			MaxLogLines:      500,
 			NamespaceMarker:  config.NamespaceMarkerConfig{Label: "mcp-keel.io/noai"},
 		},
 		Providers: []config.ProviderConfig{{
@@ -263,6 +283,7 @@ func baseCluster() *fakeCluster {
 		resources: map[string]policy.Resource{
 			"pods":             {Name: "pods"},
 			"core/pods":        {Name: "pods"},
+			"pods/log":         {Name: "pods", Subresource: "log"},
 			"apps/deployments": {Group: "apps", Name: "deployments"},
 			"nodes":            {Name: "nodes"},
 			"namespaces":       {Name: "namespaces"},
@@ -270,6 +291,7 @@ func baseCluster() *fakeCluster {
 		},
 		namespaced: map[string]bool{
 			"pods":             true,
+			"pods/log":         true,
 			"apps/deployments": true,
 			"secrets":          true,
 			"nodes":            false,

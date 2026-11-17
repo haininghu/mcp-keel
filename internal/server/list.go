@@ -9,11 +9,13 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/haininghu/mcp-keel/internal/policy"
+	"github.com/haininghu/mcp-keel/internal/redact"
 )
 
 // handleList implements the list tool: resolve, canonicalise, validate scope,
-// pre-check, fetch a bounded window, evaluate every item and shape the
-// response. A denied list is an empty result, never an error (ADR 0008).
+// pre-check, fetch a bounded window, evaluate every item, redact the surviving
+// items and shape the response. A denied list is an empty result, never an
+// error (ADR 0008).
 //
 //nolint:gocritic // hugeParam: MCP SDK handler signature
 func (s *Server) handleList(ctx context.Context, _ *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, any, error) {
@@ -70,12 +72,17 @@ func (s *Server) handleList(ctx context.Context, _ *mcp.CallToolRequest, in list
 		return jsonResult(s.emptyListOutput(&in, res))
 	}
 
+	engine, err := s.redactionFor(ctx, in.Provider, in.Context, cluster)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	items, err := cluster.List(ctx, res, in.Namespace, in.LabelSelector, limit+1)
 	if err != nil {
 		return nil, nil, mapKubeError(err)
 	}
 
-	out := s.shapeList(ctx, cluster, compiled, &in, res, namespaced, items, limit)
+	out := s.shapeList(ctx, cluster, compiled, engine, &in, res, namespaced, items, limit)
 	return jsonResult(out)
 }
 
@@ -91,10 +98,12 @@ func (s *Server) emptyListOutput(in *listInput, res policy.Resource) listOutput 
 	}
 }
 
-// shapeList evaluates each fetched item, drops denied or marker-protected
-// items, applies the object-size and response-budget limits, and returns the
-// list envelope. The number of hidden items is logged server-side only.
-func (s *Server) shapeList(ctx context.Context, cluster Cluster, compiled *policy.Policy, in *listInput, res policy.Resource, namespaced bool, items []unstructured.Unstructured, limit int) listOutput {
+// shapeList evaluates each fetched item, drops denied, marker-protected or
+// unredactable items, applies the object-size and response-budget limits, and
+// returns the list envelope. The number of hidden items is logged server-side
+// only. A redaction cap breach drops the item and sets truncated, so unredacted
+// content is never returned (ADR 0015).
+func (s *Server) shapeList(ctx context.Context, cluster Cluster, compiled *policy.Policy, engine *redact.Engine, in *listInput, res policy.Resource, namespaced bool, items []unstructured.Unstructured, limit int) listOutput {
 	out := s.emptyListOutput(in, res)
 	windowTruncated := len(items) > limit
 
@@ -147,7 +156,20 @@ func (s *Server) shapeList(ctx context.Context, cluster Cluster, compiled *polic
 			continue
 		}
 
-		object, reduced := s.fitObject(item)
+		redacted, redactErr := engine.ApplyObject(pruneObject(item),
+			redactionMatch(res, item.GetNamespace(), namespaced, item.GetName(), item.GetLabels()))
+		if redactErr != nil {
+			// A cap breach fails closed: the item is dropped, never returned
+			// unredacted.
+			hidden++
+			out.Truncated = true
+			s.logger.Error("redaction failed; hiding item",
+				"provider", in.Provider, "context", in.Context,
+				"namespace", item.GetNamespace(), "name", item.GetName())
+			continue
+		}
+
+		object, reduced := s.fitObject(redacted)
 		if reduced {
 			out.Truncated = true
 		}

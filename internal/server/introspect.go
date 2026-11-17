@@ -47,8 +47,35 @@ type configuredRule struct {
 
 // configuredProvider groups the configured rules of one provider.
 type configuredProvider struct {
-	Provider string           `json:"provider"`
-	Rules    []configuredRule `json:"rules"`
+	Provider   string                `json:"provider"`
+	Rules      []configuredRule      `json:"rules"`
+	Redactions []configuredRedaction `json:"redactions,omitempty"`
+}
+
+// configuredRedaction is one configured content-redaction rule. The literal
+// replace text is secret material and is never exposed; only its pattern is
+// (ADR 0015).
+type configuredRedaction struct {
+	Resources  []string                     `json:"resources,omitempty"`
+	Namespaces []string                     `json:"namespaces,omitempty"`
+	Names      []string                     `json:"names,omitempty"`
+	Labels     *configuredLabelFilter       `json:"labels,omitempty"`
+	Fields     []configuredFieldRedaction   `json:"fields,omitempty"`
+	Replace    []configuredReplaceRedaction `json:"replace,omitempty"`
+}
+
+// configuredFieldRedaction is one configured structural field operation.
+type configuredFieldRedaction struct {
+	Path   string `json:"path"`
+	Action string `json:"action"`
+	Marker string `json:"marker,omitempty"`
+}
+
+// configuredReplaceRedaction is one configured textual replacement. Only the
+// pattern is exposed, never the literal text.
+type configuredReplaceRedaction struct {
+	Pattern string `json:"pattern,omitempty"`
+	Marker  string `json:"marker,omitempty"`
 }
 
 // listConfiguredRulesOutput is the list_configured_rules envelope.
@@ -85,7 +112,11 @@ func (s *Server) handleListConfiguredRules(_ context.Context, _ *mcp.CallToolReq
 				Capabilities: configuredCapabilities(rule.Capabilities),
 			}
 		}
-		out.Providers = append(out.Providers, configuredProvider{Provider: name, Rules: rules})
+		out.Providers = append(out.Providers, configuredProvider{
+			Provider:   name,
+			Rules:      rules,
+			Redactions: configuredRedactions(provider.Redactions),
+		})
 	}
 	return jsonResult(out)
 }
@@ -165,4 +196,58 @@ func configuredNames(filter policy.NameFilter) *configuredNameFilter {
 		return nil
 	}
 	return &configuredNameFilter{Include: filter.Include, Exclude: filter.Exclude}
+}
+
+// configuredRedactions maps configured redaction rules to their JSON form,
+// preserving rule and action order.
+func configuredRedactions(rules []config.RedactionConfig) []configuredRedaction {
+	if len(rules) == 0 {
+		return nil
+	}
+	out := make([]configuredRedaction, len(rules))
+	for i := range rules {
+		rule := &rules[i]
+		out[i] = configuredRedaction{
+			Resources:  rule.Resources,
+			Namespaces: rule.Namespaces,
+			Names:      rule.Names,
+			Labels:     configuredLabels(rule.Labels),
+			Fields:     configuredFields(rule.Fields),
+			Replace:    configuredReplacements(rule.Replace),
+		}
+	}
+	return out
+}
+
+// configuredFields maps configured field operations, exposing the path, action
+// and marker.
+func configuredFields(fields []config.FieldRedaction) []configuredFieldRedaction {
+	if len(fields) == 0 {
+		return nil
+	}
+	out := make([]configuredFieldRedaction, len(fields))
+	for i := range fields {
+		out[i] = configuredFieldRedaction{
+			Path:   fields[i].Path,
+			Action: fields[i].Action,
+			Marker: markerValue(fields[i].Marker),
+		}
+	}
+	return out
+}
+
+// configuredReplacements maps configured textual replacements. The literal text
+// is secret material and is deliberately omitted.
+func configuredReplacements(replacements []config.ReplaceRedaction) []configuredReplaceRedaction {
+	if len(replacements) == 0 {
+		return nil
+	}
+	out := make([]configuredReplaceRedaction, len(replacements))
+	for i := range replacements {
+		out[i] = configuredReplaceRedaction{
+			Pattern: replacements[i].Pattern,
+			Marker:  markerValue(replacements[i].Marker),
+		}
+	}
+	return out
 }

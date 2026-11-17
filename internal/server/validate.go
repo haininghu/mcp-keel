@@ -53,6 +53,18 @@ func validateName(name string) error {
 	return nil
 }
 
+// validateContainer validates an optional container name as a DNS-1123 label. An
+// empty value means "select the pod's only container".
+func validateContainer(container string) error {
+	if container == "" {
+		return nil
+	}
+	if errs := validation.IsDNS1123Label(container); len(errs) > 0 {
+		return fmt.Errorf("invalid container %q", container)
+	}
+	return nil
+}
+
 // validateLabelSelector bounds a caller-supplied label selector and rejects
 // control characters. It is passed to the API server unchanged.
 func validateLabelSelector(selector string) error {
@@ -76,4 +88,17 @@ func (s *Server) clampListLimit(requested int) int {
 		limit = s.cfg.Server.MaxListItems
 	}
 	return limit
+}
+
+// clampLogLines applies the caller's tailLines, defaulting it to the configured
+// server.max_log_lines and never exceeding it.
+func (s *Server) clampLogLines(requested int) int64 {
+	lines := requested
+	if lines <= 0 {
+		lines = s.cfg.Server.MaxLogLines
+	}
+	if lines > s.cfg.Server.MaxLogLines {
+		lines = s.cfg.Server.MaxLogLines
+	}
+	return int64(lines)
 }
