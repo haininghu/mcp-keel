@@ -34,6 +34,10 @@ func (f LabelFilter) matches(set LabelSet) bool {
 	return true
 }
 
+// Matches reports whether the label set satisfies the filter. An empty filter
+// passes; when labels are needed but not known the filter fails closed.
+func (f LabelFilter) Matches(set LabelSet) bool { return f.matches(set) }
+
 // labelMatches reports whether a single filter entry matches. A bare "key"
 // matches key presence; "key=value" matches the exact, case-sensitive value.
 func labelMatches(entry string, values map[string]string) bool {
@@ -47,6 +51,10 @@ func labelMatches(entry string, values map[string]string) bool {
 	}
 	return got == want
 }
+
+// Matches reports whether the object name satisfies the filter. An empty filter
+// passes; Exclude wins over Include.
+func (f NameFilter) Matches(name string) bool { return f.matches(name) }
 
 // matches reports whether the object name satisfies the filter. An empty filter
 // passes. When both are set, Exclude wins over Include.

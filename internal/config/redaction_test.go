@@ -132,6 +132,8 @@ func TestParseRedactionsInvalid(t *testing.T) {
 		"empty resource": "      - resources: [\"\"]\n" +
 			"        fields:\n          - { path: data, action: remove }\n",
 		"empty path":           "      - fields:\n          - { path: \"\", action: remove }\n",
+		"unterminated path":    "      - fields:\n          - { path: \"spec.containers[\", action: remove }\n",
+		"empty path segment":   "      - fields:\n          - { path: \"spec..name\", action: remove }\n",
 		"missing action":       "      - fields:\n          - { path: data }\n",
 		"invalid action":       "      - fields:\n          - { path: data, action: drop }\n",
 		"text and pattern":     "      - replace:\n          - { text: a, pattern: b }\n",

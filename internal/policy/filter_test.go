@@ -54,3 +54,46 @@ func TestNameFilterMatches(t *testing.T) {
 		})
 	}
 }
+
+func TestLabelFilterMatchesExported(t *testing.T) {
+	cases := []struct {
+		name   string
+		filter LabelFilter
+		set    LabelSet
+		want   bool
+	}{
+		{"empty filter passes without labels", LabelFilter{}, LabelSet{}, true},
+		{"require present", LabelFilter{Require: []string{"team=platform"}}, labels(map[string]string{"team": "platform"}), true},
+		{"require absent", LabelFilter{Require: []string{"team=platform"}}, labels(map[string]string{"team": "other"}), false},
+		{"exclude wins", LabelFilter{Require: []string{"a"}, Exclude: []string{"a"}}, labels(map[string]string{"a": ""}), false},
+		{"unknown labels fail closed", LabelFilter{Require: []string{"a"}}, LabelSet{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.filter.Matches(tc.set); got != tc.want {
+				t.Fatalf("LabelFilter%+v.Matches(%+v) = %v, want %v", tc.filter, tc.set, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNameFilterMatchesExported(t *testing.T) {
+	cases := []struct {
+		name   string
+		filter NameFilter
+		object string
+		want   bool
+	}{
+		{"empty filter passes", NameFilter{}, "anything", true},
+		{"include match", NameFilter{Include: []string{"frontend-*"}}, "frontend-1", true},
+		{"include miss", NameFilter{Include: []string{"frontend-*"}}, "backend-1", false},
+		{"exclude wins over include", NameFilter{Include: []string{"frontend-*"}, Exclude: []string{"*-debug"}}, "frontend-debug", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.filter.Matches(tc.object); got != tc.want {
+				t.Fatalf("NameFilter%+v.Matches(%q) = %v, want %v", tc.filter, tc.object, got, tc.want)
+			}
+		})
+	}
+}

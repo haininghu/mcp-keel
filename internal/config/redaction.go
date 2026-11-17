@@ -8,6 +8,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 
 	"github.com/haininghu/mcp-keel/internal/policy"
+	"github.com/haininghu/mcp-keel/internal/redact"
 )
 
 // Field redaction actions, the accepted values of FieldRedaction.Action.
@@ -40,8 +41,8 @@ type RedactionConfig struct {
 // FieldRedaction is a structural field operation: remove the matched field or
 // replace its terminal string value with the marker.
 type FieldRedaction struct {
-	// Path is the field path; it must not be empty. Its grammar is validated by
-	// the redaction engine, not at load.
+	// Path is the field path; it must not be empty and its grammar is validated
+	// at load by the redaction engine.
 	Path string `yaml:"path"`
 	// Action is "remove" or "replace"; it is required.
 	Action string `yaml:"action"`
@@ -102,6 +103,9 @@ func (r *RedactionConfig) validate() error {
 func (f *FieldRedaction) validate() error {
 	if f.Path == "" {
 		return errors.New("path: must not be empty")
+	}
+	if err := redact.ValidatePath(f.Path); err != nil {
+		return fmt.Errorf("path: %w", err)
 	}
 	switch f.Action {
 	case fieldActionRemove, fieldActionReplace:
