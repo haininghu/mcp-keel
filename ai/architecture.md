@@ -20,8 +20,8 @@ capabilities matches the request AND that capability's filters pass; the first a
 - **Resource canonicalisation**: the tool argument is resolved through discovery/RESTMapper to one
   canonical form used for BOTH policy matching and the API call.
 - **Label and marker checks**: object labels, and the optional namespace marker, are fail-closed.
-- **Content redaction**: per-provider, post-authorization, over `get`/`list` string values and the `logs`
-  text (ADR 0015, ADR 0016).
+- **Content redaction**: per-provider, post-authorization, over `get`/`list` string values, the `logs`
+  text and the decoded Prometheus JSON (ADR 0015, ADR 0016, ADR 0017).
 - **Output shaping**: `managedFields` pruning, object reduction and the response budget (ADR 0013).
 
 Where a check cannot be performed (for example discovery fails, or an ambiguous resource name), the server
@@ -41,7 +41,7 @@ flowchart LR
   Agent -- "MCP tool calls (stdio)" --> Tools
   Tools --> Engine
   Tools --> Kube
-  Kube -- "get / list / logs / discovery" --> API
+  Kube -- "get / list / logs / discovery / services proxy" --> API
 ```
 
 | Package           | Responsibility                                                              |
@@ -55,7 +55,8 @@ flowchart LR
 The policy package is pure (no I/O): it evaluates already-canonical resources and exposes the winning
 capability's namespace-marker exemption on the decision. The server applies the marker overlay.
 
-The server exposes five tools: `get`, `list`, `logs`, `list_configured_rules` and `list_clusters`.
+The server exposes seven tools: `get`, `list`, `logs`, `prometheus_query`, `prometheus_query_range`,
+`list_configured_rules` and `list_clusters`.
 
 ## Authorization pipeline
 
@@ -122,6 +123,24 @@ keeps the pre-check an optimization only - it never grants, and it never over-de
 6. On deny, report **not found**; otherwise fetch the log with a bounded `tailLines` and `limitBytes`
    (`max_log_bytes + 1`, to detect truncation), redact it and return the envelope.
 
+## Prometheus flow
+
+1. Validate `provider`, `context`, `datasource`, `query` and (range) `start`/`end`/`step`.
+2. Resolve the datasource from configuration; an unknown name is a configuration error. The synthetic
+   resource `prometheus` is resolved directly, never through discovery (ADR 0017).
+3. Pre-check with the dimensions known now (namespace, `prometheus`, `query` or `range`, datasource name).
+4. Fetch the Service (existence, port validation, labels); the Service object is never returned.
+5. Full authorization with the Service labels (and the namespace marker if enabled); `names` filters match
+   the datasource name, `labels` filters the Service labels.
+6. On deny, report **not found**; otherwise query Prometheus through the service proxy
+   (`/api/v1/namespaces/{ns}/services/{service}:{port}/proxy/api/v1/query` or `.../query_range`), redact
+   the decoded JSON and return the envelope `{provider, context, datasource, resultType, result,
+   warnings?, infos?}`.
+
+The proxy request uses only `url.Values` for agent inputs, the server-set `timeout`, a redirect-rejecting
+client, a `LimitReader` body cap, and strict `json.Number` decoding. The per-provider concurrency sink and
+the range/point limits are enforced before the API call.
+
 ## Why fail-closed
 
 - **Canonicalisation.** Kubernetes has many aliases (`deploy`, `deployments`, `Deployment`) and ambiguous
@@ -144,8 +163,11 @@ keeps the pre-check an optimization only - it never grants, and it never over-de
 - `adr/0014-kubernetes-client-and-discovery.md` — client config, discovery and caching.
 - `adr/0015-content-redaction.md` — configured content redaction of tool results.
 - `adr/0016-pod-log-access.md` — pod logs as a fixed, bounded `pods/log:get` tool.
+- `adr/0017-prometheus-queries.md` — Prometheus via the service proxy and the synthetic `prometheus`
+  resource.
 - `method-specs/redaction.md` — the redaction contract (path grammar, phases, caps).
 - `method-specs/logs.md` — the pod-log contract (inputs, bounds, errors).
+- `method-specs/prometheus_query.md` / `prometheus_query_range.md` — the Prometheus tool contracts.
 - `config-reference.md` — the authoritative config field reference.
 - `method-specs/authorization.md` — the shared pipeline; `method-specs/output.md` — output contract.
 - `../AGENTS.md` — invariants; `../README.md` — user-facing overview.

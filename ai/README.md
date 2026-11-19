@@ -15,6 +15,8 @@ way it is, and the exact contract of every MCP tool. Prefer these documents over
 | `method-specs/`    | Specification of each MCP tool and the shared authorization pipeline.    |
 
 The pod-log decision is `adr/0016-pod-log-access.md`; its tool contract is `method-specs/logs.md`.
+The Prometheus decision is `adr/0017-prometheus-queries.md`; its tool contracts are
+`method-specs/prometheus_query.md` and `method-specs/prometheus_query_range.md`.
 
 ## How to add
 

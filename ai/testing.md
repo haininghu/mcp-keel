@@ -49,6 +49,23 @@ catch bypasses. The policy engine is backend-agnostic, so most of it is testable
 | a redaction rule with an unresolvable/ambiguous resource | skipped + warned (capability logic) |
 | a redaction `replace`/`text` literal | never returned by `list_configured_rules`, never logged |
 | pod logs for a denied, filtered or missing pod | reported exactly like a non-existent pod |
+| `*:query` / `*:range` in config | rejected at load (query/range only with exact `prometheus`) |
+| `*:get` or `prometheus:get` for a query | denied: only `prometheus:query`/`:range` grant the tools |
+| `prometheus:query` for a `prometheus:range` request | denied: query and range are separate grants |
+| `prometheus` datasource service/port via `list_configured_rules` | not exposed (configuration only) |
+| a `deny prometheus:*` without a CRD / under partial discovery | still denies the synthetic query/range half |
+| Prometheus `timeout`/`stats`/`url`/`path`/`port`/`limit` inputs | rejected as unknown input; server sets timeout |
+| a query with control characters or above the length cap | validation error, no API call |
+| a range with `end < start`, too-fine `step` or too-long range | validation error before the API call |
+| a redirect (3xx) from the proxy | error; the bearer token is never forwarded to another host |
+| an oversized Prometheus response | error (`query failed (response too large)`), never truncated JSON |
+| a non-JSON 200 response | generic upstream error; the body is never returned |
+| large Prometheus numbers (> 2^53) | preserved via `json.Number` |
+| more than `max_prometheus_concurrency` queries | rejected immediately, not queued |
+| an unknown `datasource` | configuration error, not an object-existence oracle |
+| a 403 on the Service fetch or the proxy | `forbidden` with HTTP status (accepted rights oracle) |
+| a Prometheus error JSON | sanitized, length-capped, control chars stripped |
+| a credential-plugin failure during a query | secret-free classification, never plugin output |
 
 ## Commands
 

@@ -12,6 +12,9 @@ the mitigations, and maps each mitigation to the invariants in `../AGENTS.md`.
   text (arbitrary application output).
 - **Policy integrity**: the configuration determines what the agent may see.
 - **Cluster availability**: the agent must not be able to overload the API server.
+- **Monitoring availability**: Prometheus queries share the cluster path, so an expensive PromQL expression
+  (subqueries, series cardinality) can consume Prometheus resources; the server bounds endpoints,
+  transport and output but not PromQL cost (ADR 0017).
 
 ## Adversary
 
@@ -49,6 +52,8 @@ the mitigations, and maps each mitigation to the invariants in `../AGENTS.md`.
 | Pod logs are a bounded single GET, capped by line and byte limits; no `follow` | inv 13, ADR 0016 |
 | No authorization caches; discovery cache is fail-closed | inv 14, ADR 0014 |
 | Content redaction of `get`/`list`/`logs` (best-effort; not a boundary) | inv 15, ADR 0015 |
+| Prometheus is a fixed, synthetic `prometheus:query`/`:range`; no URL/path/port input to inject | inv 6, ADR 0017 |
+| Prometheus proxy GET: redirects rejected, `LimitReader` body, concurrency sink | inv 13, ADR 0017 |
 
 ## Policy and RBAC are independent layers
 
@@ -65,6 +70,21 @@ text. The server returns it as data; the agent must treat it as untrusted. The p
 can read but cannot stop the agent from being influenced by what it reads. This is why the policy must be
 least-privilege and why output is bounded. Pod log text is arbitrary application output: it has no
 structure the policy can filter, so the `logs` tool only bounds its size.
+
+## Prometheus outbound path
+
+A Prometheus query is the only outbound request the server issues beyond the Kubernetes API: a single
+`GET` to the fixed path `/api/v1/namespaces/{ns}/services/{service}:{port}/proxy/api/v1/query` (or
+`.../query_range`) on the API server. The namespace, service and port come only from configuration, agent
+inputs travel exclusively through `url.Values`, redirects are rejected (so the bearer token is never
+forwarded to a third host), and the body is read through a `LimitReader`. Prometheus metric label values are
+a new data source whose content can carry injection payloads, exactly as object labels do.
+
+The server bounds endpoints, transport, cost and output, but not PromQL semantics: subqueries
+(`metric[30d:1s]`) and series cardinality (`{__name__=~".+"}`) live in the query string and can be
+expensive even when range, step and point count are small. The operator must bound those on Prometheus
+itself (`--query.max-samples`, `--query.timeout`, `--query.max-concurrency`). This is the documented
+residual risk of ADR 0017, and it limits the "monitoring availability" asset, not the cluster itself.
 
 ## Non-goals (v1)
 

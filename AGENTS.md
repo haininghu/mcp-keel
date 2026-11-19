@@ -9,8 +9,10 @@ exposes tools that let an AI agent inspect Kubernetes clusters, read-only, under
 
 - Transport: MCP over **stdio** only. All logging goes to **stderr**.
 - Backend: Kubernetes via client-go. A flat cluster abstraction (`internal/kube`), no plugin factory.
-- Verbs in v1: `get`, `list` only, plus the `logs` tool (a bounded `get` on `pods/log`). Mutating and
-  streaming verbs are out of scope.
+- Verbs in v1: `get`, `list` only, plus the `logs` tool (a bounded `get` on `pods/log`) and the two
+  resource-specific verbs `query`/`range` over the synthetic resource `prometheus` (the
+  `prometheus_query` / `prometheus_query_range` tools, ADR 0017). Mutating and streaming verbs are out of
+  scope.
 - Authorization: **deny-by-default**, driven by a human-readable YAML config.
 - The design mirrors `../mcp-forj`; see its `ai/architecture.md` for the reference philosophy.
 
@@ -27,7 +29,7 @@ ADR/spec.
 | `cmd/mcp-keel`                  | Entrypoint and wiring (`main.go`).                              |
 | `internal/config`               | YAML config loading, defaults, validation, secret redaction.    |
 | `internal/policy`               | Capabilities, firewall rule engine, marker-exemption flag.      |
-| `internal/kube`                 | Cluster abstraction, kubeconfig loading, discovery/RESTMapper.  |
+| `internal/kube`                 | Cluster abstraction, kubeconfig loading, discovery/RESTMapper, service proxy. |
 | `internal/redact`               | Redaction walk: field paths, text/pattern replace, caps.        |
 | `internal/server`               | MCP server, tool handlers, argument validation, limits.         |
 | `ai/`                           | Architecture overview, ADRs, method specs.                      |
@@ -124,20 +126,25 @@ Authorization is the product. These rules are security-critical:
 6. **Resource identity is canonicalised.** The tool argument is resolved through discovery to one canonical
    form (`group/resource[/subresource]`, core = blank), and that same form is used for policy matching,
    redaction matching and the API call. Aliases, singular/plural forms, shortnames, case and ambiguous
-   names (`events`) must never produce a different result; ambiguity fails closed.
+   names (`events`) must never produce a different result; ambiguity fails closed. **Exception** (ADR 0017):
+   the synthetic resource `prometheus` is resolved only for the verbs `query`/`range` and never through
+   discovery; its wire mapping (`services/{name}:{port}/proxy/...`) is fixed in the tool, so the alternate-
+   spelling bypass this invariant prevents cannot occur. `prometheus:get`/`:list` still resolve through
+   discovery.
 7. **Wildcards are fail-closed.** On an `allow` rule, `*` never matches subresources and never matches the
    built-in sensitive set (canonical names: `secrets`, `serviceaccounts`, `configmaps`,
    `rbac.authorization.k8s.io/roles`, `rbac.authorization.k8s.io/rolebindings`,
-   `rbac.authorization.k8s.io/clusterroles`, `rbac.authorization.k8s.io/clusterrolebindings`). On a `deny`
-   rule, `*` matches everything, including subresources and the sensitive set. Sensitive resources require
-   explicit naming to be granted. The set can be extended (entries canonicalised per request; an ambiguous
-   entry protects all matching groups), never reduced.
+   `rbac.authorization.k8s.io/clusterroles`, `rbac.authorization.k8s.io/clusterrolebindings`, and the
+   synthetic `prometheus` resource). On a `deny` rule, `*` matches everything, including subresources and the
+   sensitive set. Sensitive resources require explicit naming to be granted. The set can be extended
+   (entries canonicalised per request; an ambiguous entry protects all matching groups), never reduced.
 8. **Cluster scope uses the `""` namespace marker.** Every rule has a `namespaces` list (non-empty; an
    entry may be `""`); the literal `""` selects cluster-scoped resources and is matched **only** by that
    literal entry, never by a glob
    (`*` and `**` never match `""`), so a namespace wildcard never grants cluster-scoped access. There is
    no `cluster_scope` field and no rule-level `contexts`.
-9. **Verbs do not imply each other.** `list` does not satisfy `get`, and vice versa.
+9. **Verbs do not imply each other.** `list` does not satisfy `get`, and vice versa; `query` and `range`
+   are separate, resource-specific grants over `prometheus` only, and neither implies the other.
 10. **Capability filters are match predicates.** `labels.require` (all present) and `labels.exclude`
     (none present; exclude wins) are evaluated against the object's labels; a bare key matches key
     presence, `key=value` matches exactly and case-sensitively. `names.include`/`names.exclude` match the
@@ -195,6 +202,8 @@ Authorization is the product. These rules are security-critical:
 - **Testing strategy**: `ai/testing.md`.
 - **Architecture decisions**: `ai/adr/` (start at `0001`).
 - **Pod logs**: `ai/method-specs/logs.md` and `ai/adr/0016-pod-log-access.md`.
+- **Prometheus queries**: `ai/method-specs/prometheus_query.md`, `prometheus_query_range.md` and
+  `ai/adr/0017-prometheus-queries.md`.
 - **MCP tool/operation specifications**: `ai/method-specs/`.
 - **Docs index**: `ai/README.md`.
 

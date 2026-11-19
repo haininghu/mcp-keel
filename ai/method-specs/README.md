@@ -16,15 +16,17 @@ Each tool spec has:
 
 ## Index
 
-| Spec                          | Contents                                                          |
-|-------------------------------|-------------------------------------------------------------------|
-| `authorization.md`            | The shared pipeline used by every capability-gated tool.          |
-| `resource-canonicalization.md`| Resource identifier -> one canonical form for policy and call.    |
-| `discovery-and-caching.md`    | Per-context discovery, partial-failure tolerance and caching.     |
-| `output.md`                   | Shared output envelope, pruning, truncation and limits.           |
-| `redaction.md`                | Configured content redaction of get/list/logs (ADR 0015).         |
-| `get.md`                      | `get` — fetch one object by name.                                 |
-| `list.md`                     | `list` — list objects with per-item authorization.                |
-| `logs.md`                     | `logs` — bounded log text for one pod (`pods/log:get`).           |
-| `list_configured_rules.md`    | `list_configured_rules` — expose configured rules (config only).  |
-| `list_clusters.md`            | `list_clusters` — expose accessible provider/context names.       |
+| Spec                           | Contents                                                              |
+|--------------------------------|-----------------------------------------------------------------------|
+| `authorization.md`             | The shared pipeline used by every capability-gated tool.              |
+| `resource-canonicalization.md` | Resource identifier -> one canonical form for policy and call.        |
+| `discovery-and-caching.md`     | Per-context discovery, partial-failure tolerance and caching.         |
+| `output.md`                    | Shared output envelope, pruning, truncation and limits.               |
+| `redaction.md`                 | Configured content redaction of get/list/logs (ADR 0015).             |
+| `get.md`                       | `get` — fetch one object by name.                                   |
+| `list.md`                      | `list` — list objects with per-item authorization.                  |
+| `logs.md`                      | `logs` — bounded log text for one pod (`pods/log:get`).             |
+| `prometheus_query.md`          | `prometheus_query` — instant PromQL query (`prometheus:query`).     |
+| `prometheus_query_range.md`    | `prometheus_query_range` — range PromQL query (`prometheus:range`). |
+| `list_configured_rules.md`     | `list_configured_rules` — expose configured rules (config only).    |
+| `list_clusters.md`             | `list_clusters` — expose accessible provider/context names.         |

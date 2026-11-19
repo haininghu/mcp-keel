@@ -3,8 +3,10 @@
 A policy-governed [Model Context Protocol](https://modelcontextprotocol.io) server that gives AI agents
 controlled, **read-only** access to Kubernetes clusters. Access is **deny-by-default** and configured per
 cluster or group of clusters. The first iteration supports the `get` and `list` verbs plus a bounded `logs`
-tool for pod logs; mutating verbs (`create`, `update`, `patch`, `delete`), streaming operations (`watch`,
-`exec`, `port-forward`) and remote transports are planned for later stages.
+tool for pod logs and two Prometheus query tools (`prometheus_query`, `prometheus_query_range`) that reach
+in-cluster Prometheus through the Kubernetes service proxy (ADR 0017); mutating verbs (`create`, `update`,
+`patch`, `delete`), streaming operations (`watch`, `exec`, `port-forward`) and remote transports are planned
+for later stages.
 
 `mcp-keel` is the Kubernetes sibling of [`mcp-forj`](../mcp-forj), a policy-governed MCP server for code
 hosting providers. It reuses that project's authorization philosophy: a small, auditable, deny-by-default
@@ -33,13 +35,14 @@ The binary lands in `$(go env GOPATH)/bin/mcp-keel`; use that path (or an absolu
 path to a locally built binary) as `command` in the host configuration.
 `configs/config.yaml` is git-ignored and must never be committed. The server
 speaks MCP over stdio only and logs to stderr; there is no HTTP listener and no
-in-cluster service account. Once registered, ask the host to call the `get`, `list`
-or `logs` tools, for example list pods in a namespace your policy allows.
+in-cluster service account. Once registered, ask the host to call the `get`, `list`, `logs`,
+`prometheus_query` or `prometheus_query_range` tools, for example list pods in a namespace your policy
+allows.
 
 ## Scope of v1
 
 - **Verbs:** `get` and `list` only, plus the dedicated `logs` tool (a bounded `get` on `pods/log`, never a
-  stream).
+  stream) and the `query`/`range` verbs on the synthetic resource `prometheus` (the Prometheus tools).
 - **Transport:** MCP over **stdio** only. The server runs locally; there is no HTTP listener and no
   in-cluster service account support in v1.
 - **Backend:** one Kubernetes backend (client-go). A flat cluster abstraction, not a plugin/factory layer.
@@ -62,15 +65,18 @@ or `logs` tools, for example list pods in a namespace your policy allows.
 
 ## Tools
 
-| Tool                    | Capability    | Description                                                       |
-|-------------------------|---------------|-------------------------------------------------------------------|
-| `get`                   | see rule      | Fetch one object by provider, context, resource, namespace, name. |
-| `list`                  | see rule      | List objects, optionally by namespace, label selector, limit.     |
-| `logs`                  | see rule      | Fetch bounded log text for one pod (`pods/log:get`).              |
-| `list_configured_rules` | `policy_read` | List configured rules for providers that opt in. Config only.     |
-| `list_clusters`         | `policy_read` | List accessible provider/context names for opted-in providers.    |
+| Tool                     | Capability         | Description                                                       |
+|--------------------------|--------------------|-------------------------------------------------------------------|
+| `get`                    | see rule           | Fetch one object by provider, context, resource, namespace, name. |
+| `list`                   | see rule           | List objects, optionally by namespace, label selector, limit.     |
+| `logs`                   | see rule           | Fetch bounded log text for one pod (`pods/log:get`).              |
+| `prometheus_query`       | `prometheus:query` | Instant PromQL query via the service proxy.                       |
+| `prometheus_query_range` | `prometheus:range` | Range PromQL query via the service proxy.                         |
+| `list_configured_rules`  | `policy_read`      | List configured rules for providers that opt in. Config only.     |
+| `list_clusters`          | `policy_read`      | List accessible provider/context names for opted-in providers.    |
 
-`get`, `list` and `logs` are gated by the matching rule's `resource:verb` capabilities. See
+`get`, `list` and `logs` are gated by the matching rule's `resource:verb` capabilities; the Prometheus
+tools by `prometheus:query` / `prometheus:range`. See
 [`ai/method-specs/`](ai/method-specs/README.md) for the exact contracts.
 
 ## Pod logs
@@ -88,6 +94,27 @@ marker-protected and missing pods all answer `not found`.
 - `tailLines` is capped by `server.max_log_lines` (default 500, hard max 10000); the returned text is capped
   by `server.max_log_bytes` (default 262144), and `truncated` reports a cut.
 - There is no `follow`: the read is a single bounded GET, never a stream.
+
+## Prometheus queries
+
+The `prometheus_query` (instant) and `prometheus_query_range` (range) tools evaluate PromQL against a
+configured in-cluster Prometheus datasource, reached through the Kubernetes service proxy. Each provider
+opts in by listing datasources under `providers[].prometheus` (name, namespace, service, port). The tools
+accept no URL, path, service, port or timeout — only `provider`, `context`, `datasource`, `query` and either
+`time` or `start`/`end`/`step`.
+
+Because Prometheus has no Kubernetes object model, the capability is a synthetic resource: `prometheus:query`
+and `prometheus:range` must be named explicitly — an allow `*` never reaches them, and `*:query`/`*:range`
+are rejected at configuration load. The namespace scope, `names` (datasource name) and `labels` (the Service
+labels) filters and the namespace marker all apply as usual.
+
+- The Service is fetched first for existence, port validation and labels; it is never returned. A missing,
+  denied or marker-protected datasource answers `not found`.
+- `query` is capped by `server.max_prometheus_query_length` (default 8 KiB, hard max 64 KiB); the range and
+  point count are capped by `server.max_prometheus_query_range` / `max_prometheus_query_points`; the response
+  body is capped by `server.max_prometheus_response_bytes`. Queries share a per-provider concurrency limit.
+- The server sets the Prometheus `timeout` itself and never follows redirects. See ADR 0017 and the tool
+  specs for the full contract.
 
 ## Configuration (preview)
 
@@ -133,6 +160,9 @@ Key rules:
 - **Pod logs need an explicit grant.** `logs` uses the fixed capability `pods/log:get`; `*:get` never
   matches subresources, so logs are never granted by a wildcard. A `deny` rule with `resource: "*"` or
   `verb: "*"` does cover them.
+- **Prometheus needs explicit grants.** The Prometheus tools use the synthetic resource `prometheus` with
+  `query`/`range`; an allow `*` never matches it (`*:query`/`*:range` are rejected at load). A `deny`
+  `prometheus:*` covers both verbs.
 - **Cluster-scoped resources use the `""` namespace marker.** The literal `""` in a rule's `namespaces`
   selects cluster-scoped resources and is matched only by that literal entry; `*` and `**` never match
   `""`, so a namespace wildcard never leaks cluster-scoped access. There is no `cluster_scope` field and

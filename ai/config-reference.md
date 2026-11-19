@@ -30,6 +30,12 @@ the `MCP_KEEL_CONFIG` environment variable.
 | `max_response_bytes` | int | no | `8388608` | `> 0` |
 | `max_log_bytes` | int | no | `262144` | `> 0`, `<= 16777216`, `< max_response_bytes` |
 | `max_log_lines` | int | no | `500` | `> 0`, `<= 10000` |
+| `max_prometheus_query_length` | int | no | `8192` | `> 0`, `<= 65536` |
+| `max_prometheus_query_range` | duration | no | `24h` | `> 0`, `<= 168h` |
+| `max_prometheus_query_points` | int | no | `11000` | `> 0`, `<= 11000` |
+| `max_prometheus_response_bytes` | int | no | `1048576` | `> 0`, `<= max_response_bytes`, `<= 8388608` |
+| `prometheus_timeout` | duration | no | `10s` | `> 0` (bounded by the provider `request_timeout`) |
+| `max_prometheus_concurrency` | int | no | `4` | `> 0`, `<= 32` |
 | `kubeconfig` | string | no | `$KUBECONFIG` or `~/.kube/config` | path exists and is readable |
 | `additional_sensitive_resources` | []string | no | `[]` | resource names, canonicalised per request; additive only |
 | `namespace_marker` | object | no | disabled | see below |
@@ -55,10 +61,38 @@ the `MCP_KEEL_CONFIG` environment variable.
 | `request_timeout` | duration | no | `server.request_timeout` | `> 0` |
 | `discovery_timeout` | duration | no | `server.discovery_timeout` | `> 0` |
 | `discovery_cache_ttl` | duration | no | `server.discovery_cache_ttl` | `>= 0` |
+| `prometheus` | list | no | `[]` | see below |
 
 `contexts` may overlap between providers; a tool selects a provider by name and a context within it. All
 rules of a provider apply to all of its contexts. The client settings above override the server defaults
-for that provider's clusters.
+for that provider's clusters. The Prometheus limits have no provider override; datasources apply to every
+context of the provider, and `prometheus_timeout` is additionally bounded by the provider's
+`request_timeout` (ADR 0017).
+
+## `providers[].prometheus[]`
+
+In-cluster Prometheus datasources reachable through the Kubernetes service proxy (ADR 0017). Empty
+disables the Prometheus tools for the provider.
+
+```yaml
+prometheus:
+  - name: main
+    namespace: monitoring
+    service: prometheus-k8s
+    port: 9090
+```
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `name` | string | yes | lowercase identifier (`a-z0-9`, separators `-. _`), at most 253 bytes, unique per provider |
+| `namespace` | string | yes | DNS-1123 label |
+| `service` | string | yes | DNS-1123 subdomain |
+| `port` | int | yes | `1..65535` |
+
+The namespace, service and port are configuration, never tool input; there is no URL, path, port or
+timeout argument on the tools. The datasource `name` is the policy `name` dimension and `names`-filter
+key; the Service labels are the policy `labels` dimension. Datasource service and port are never exposed
+by `list_configured_rules`.
 
 ## `providers[].rules[]`
 
@@ -96,12 +130,18 @@ capabilities:
 | Key | Type | Required | Validation |
 |-----|------|----------|------------|
 | resource | string | yes | see resource grammar below |
-| verb | string | yes | `get` \| `list`; `*` only on `deny` rules (ADR 0011) |
+| verb | string | yes | `get` \| `list` \| `query` \| `range`; `*` only on `deny` rules (ADR 0011) |
 | `labels.require` | []string | no | `key` (present) or `key=value` (exact, case-sensitive) |
 | `labels.exclude` | []string | no | `key` or `key=value`; wins over `require` |
 | `names.include` | []string | no | doublestar globs on `metadata.name` |
 | `names.exclude` | []string | no | doublestar globs; wins over `include` |
 | `namespace_marker` | string | no | only the value `allow` (exempts the marker overlay) |
+
+The verbs `query` and `range` are valid only with the exact resource `prometheus` (the synthetic resource
+of ADR 0017), never with the resource wildcard `*` and never in group- or subresource-qualified form;
+`*:query`, `*:range` and `pods:query` are rejected at load. `prometheus:get` and `prometheus:list` keep
+their discovery meaning (a Prometheus Operator CRD is not shadowed). A `deny` rule may use `prometheus:*`;
+it expands to the synthetic query and range grants plus, when discovery resolves `prometheus`, to the CRD.
 
 Resource grammar (ADR 0012): `resource`, `group/resource`, `resource/subresource`,
 `group/resource/subresource`, `core/resource` (core alias) or `*`. An ambiguous unqualified name is
@@ -109,6 +149,10 @@ rejected (write `core/...` for a core resource whose name also exists in another
 
 The built-in sensitive set uses canonical names (core bare; RBAC as `rbac.authorization.k8s.io/...`).
 Additional entries are canonicalised per request; an ambiguous entry protects all matching groups.
+
+The synthetic resource `prometheus` (ADR 0017) is resolved only for `query` and `range`, never through
+discovery, and is also part of the set an allow `*` never matches. It is addressed by its bare name
+`prometheus`, exactly.
 
 `pods/log` is a subresource. The `logs` tool requests it with verb `get`, so it needs the explicit capability
 `pods/log:get`; an `allow` `*` never matches subresources, while a `deny` rule with `*` as resource or verb
@@ -140,6 +184,13 @@ opt-in per provider.
 - `fields` operates on object structure and has no effect on log text; `replace` applies to every string
   value and to the whole log text.
 - The `text` literals are secret material: never returned by `list_configured_rules`, redacted in dumps.
+
+Prometheus query results (ADR 0017) are redacted with the same rules. `resources: ["prometheus"]` resolves
+the exact resource `prometheus` to the synthetic resource **before** discovery, so a Prometheus Operator CRD
+can never shadow the rule. The match dimensions are the datasource namespace (from `prometheus[].namespace`),
+the datasource name (from `prometheus[].name`, matched by `names`), and the Service labels (matched by
+`labels`); the decoded JSON body is walked exactly like an object, so `fields` operates on the JSON structure
+(`result[*].metric[...]`) and `replace` applies to every string value.
 
 ## Glob semantics
 
