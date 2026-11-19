@@ -35,8 +35,10 @@ type compiledGrant struct {
 }
 
 // BuiltinSensitive returns the canonical built-in sensitive resource set that an
-// allow "*" must never match (ADR 0004). Build always includes these entries;
-// callers may add to the set but can never remove them.
+// allow "*" must never match (ADR 0004, ADR 0017). Build always includes these
+// entries; callers may add to the set but can never remove them. The synthetic
+// Prometheus resource is included so an allow "*" can never reach the query and
+// range tools, as defense in depth: those verbs already differ from get/list.
 func BuiltinSensitive() []Resource {
 	return []Resource{
 		{Name: "secrets"},
@@ -46,6 +48,7 @@ func BuiltinSensitive() []Resource {
 		{Group: "rbac.authorization.k8s.io", Name: "rolebindings"},
 		{Group: "rbac.authorization.k8s.io", Name: "clusterroles"},
 		{Group: "rbac.authorization.k8s.io", Name: "clusterrolebindings"},
+		PrometheusResource(),
 	}
 }
 
@@ -155,7 +158,7 @@ func compileGrant(grant *CapabilityGrant, effect Effect) (compiledGrant, error) 
 		if effect != EffectDeny {
 			return compiledGrant{}, fmt.Errorf(`"*" verb is only allowed on deny rules`)
 		}
-	} else if verb != VerbGet && verb != VerbList {
+	} else if !knownVerb(verb) {
 		return compiledGrant{}, fmt.Errorf("unknown verb %q", verb)
 	}
 	compiled.verb = verb
@@ -182,6 +185,20 @@ func validateNameFilter(filter NameFilter) error {
 		}
 	}
 	return nil
+}
+
+// knownVerb reports whether v is a verb the policy engine can structurally
+// compile. Verb pairing rules live in the configuration layer; policy.Build
+// validates structure only (ADR 0017).
+func knownVerb(v Verb) bool {
+	switch v {
+	case VerbGet, VerbList, VerbQuery, VerbRange:
+		return true
+	case VerbWildcard:
+		// Normalised away before this call; the wildcard is handled separately.
+		return false
+	}
+	return false
 }
 
 func validateLabelFilter(filter LabelFilter) error {

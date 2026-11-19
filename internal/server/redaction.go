@@ -69,6 +69,13 @@ func (s *Server) buildRedactions(ctx context.Context, provider string, cluster C
 		configured := &providerCfg.Redactions[i]
 		resources := make([]policy.Resource, 0, len(configured.Resources))
 		for _, raw := range configured.Resources {
+			// The exact resource "prometheus" maps to the synthetic resource
+			// before discovery (ADR 0017); otherwise a Prometheus Operator CRD
+			// could silently shadow the rule.
+			if raw == policy.PrometheusResourceName {
+				resources = append(resources, policy.PrometheusResource())
+				continue
+			}
 			res, wildcard, err := cluster.Canonicalize(ctx, raw)
 			if err != nil {
 				if errors.Is(err, kube.ErrPartialDiscovery) {

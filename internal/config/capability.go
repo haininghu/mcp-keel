@@ -165,7 +165,10 @@ func parseNameFilter(node *yaml.Node) (policy.NameFilter, error) {
 }
 
 // validate checks the capability against the resource grammar (ADR 0012, syntax
-// only) and the rule effect (a "*" verb is only valid on deny rules).
+// only) and the rule effect (a "*" verb is only valid on deny rules). The verb
+// vocabulary and the pairing rules are enforced here (ADR 0017): the verbs
+// "query" and "range" are valid only with the exact resource "prometheus",
+// never with the resource wildcard or a group/subresource-qualified form.
 func (g *CapabilityGrant) validate(effect policy.Effect) error {
 	if err := validateResourceSyntax(g.Resource, true); err != nil {
 		return err
@@ -178,8 +181,13 @@ func (g *CapabilityGrant) validate(effect policy.Effect) error {
 		if effect != policy.EffectDeny {
 			return fmt.Errorf(`verb "*" is only allowed on deny rules`)
 		}
+	case g.Verb == policy.VerbQuery || g.Verb == policy.VerbRange:
+		if g.Resource != policy.PrometheusResourceName {
+			return fmt.Errorf("verb %q is only valid with the exact resource %q, got %q",
+				g.Verb, policy.PrometheusResourceName, g.Resource)
+		}
 	case g.Verb != policy.VerbGet && g.Verb != policy.VerbList:
-		return fmt.Errorf("verb must be get or list, got %q", g.Verb)
+		return fmt.Errorf("verb must be get, list, query or range, got %q", g.Verb)
 	}
 	if err := validateLabelFilter(g.Filter.Labels); err != nil {
 		return err

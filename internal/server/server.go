@@ -1,9 +1,10 @@
 // Package server exposes the mcp-keel read-only Kubernetes tools over MCP. It
-// wires the configuration, the policy engine and the kube backend into five
-// tools (get, list, logs, list_configured_rules, list_clusters). Every
-// capability-gated tool canonicalises the resource, authorizes the request and
-// only then touches the cluster; denied, filter-excluded and marker-protected
-// objects are reported exactly like non-existent ones (ADR 0008, ADR 0013).
+// wires the configuration, the policy engine and the kube backend into seven
+// tools (get, list, logs, prometheus_query, prometheus_query_range,
+// list_configured_rules, list_clusters). Every capability-gated tool
+// canonicalises the resource, authorizes the request and only then touches the
+// cluster; denied, filter-excluded and marker-protected objects are reported
+// exactly like non-existent ones (ADR 0008, ADR 0013).
 package server
 
 import (
@@ -53,6 +54,14 @@ type Cluster interface {
 	List(ctx context.Context, res policy.Resource, namespace, labelSelector string, limit int) ([]unstructured.Unstructured, error)
 	// Logs reads a bounded window of a pod's log. It never follows the stream.
 	Logs(ctx context.Context, namespace, pod string, opts kube.LogOptions) ([]byte, error)
+	// PrometheusService fetches the configured Service, validates the port and
+	// returns its labels for the policy decision.
+	PrometheusService(ctx context.Context, ds kube.PrometheusDatasource) (map[string]string, error)
+	// PrometheusQuery evaluates a PromQL expression at one instant through the
+	// service proxy.
+	PrometheusQuery(ctx context.Context, ds kube.PrometheusDatasource, params kube.PrometheusQueryParams) (*kube.PrometheusResponse, error)
+	// PrometheusQueryRange evaluates a PromQL expression over a range.
+	PrometheusQueryRange(ctx context.Context, ds kube.PrometheusDatasource, params kube.PrometheusRangeParams) (*kube.PrometheusResponse, error)
 	// NamespaceMarked reports whether the namespace carries the marker label.
 	NamespaceMarked(ctx context.Context, namespace, label string) (bool, error)
 }
@@ -129,7 +138,7 @@ func New(cfg *config.Config, registry ClusterRegistry, logger *slog.Logger) *Ser
 	}
 }
 
-// MCPServer builds an mcp.Server with all five tools registered. version is
+// MCPServer builds an mcp.Server with all seven tools registered. version is
 // advertised to clients and is typically injected at build time.
 func (s *Server) MCPServer(version string) *mcp.Server {
 	mcpSrv := mcp.NewServer(&mcp.Implementation{Name: s.cfg.Server.Name, Version: version}, nil)
@@ -148,6 +157,16 @@ func (s *Server) MCPServer(version string) *mcp.Server {
 		Name:        "logs",
 		Description: "Read a bounded window of a pod's log, under policy. Requires the pods/log:get capability; denied or non-existent pods are reported identically as not found. The stream is never followed.",
 	}, s.handleLogs)
+
+	mcp.AddTool(mcpSrv, &mcp.Tool{
+		Name:        "prometheus_query",
+		Description: "Evaluate a PromQL expression at a single instant against one configured Prometheus datasource, through the Kubernetes service proxy. Requires the prometheus:query capability; denied or missing datasources are reported identically as not found.",
+	}, s.handlePrometheusQuery)
+
+	mcp.AddTool(mcpSrv, &mcp.Tool{
+		Name:        "prometheus_query_range",
+		Description: "Evaluate a PromQL expression over a time range against one configured Prometheus datasource, through the Kubernetes service proxy. Requires the prometheus:range capability; denied or missing datasources are reported identically as not found.",
+	}, s.handlePrometheusQueryRange)
 
 	mcp.AddTool(mcpSrv, &mcp.Tool{
 		Name:        "list_configured_rules",

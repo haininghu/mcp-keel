@@ -64,6 +64,15 @@ server:
   max_log_bytes: 262144            # 256 KiB; upper bound for one pod log read
   max_log_lines: 500               # default and maximum tailLines for the logs tool
 
+  # Prometheus query bounds (ADR 0017). The server sets the Prometheus "timeout"
+  # itself; the agent can never raise it.
+  max_prometheus_query_length: 8192    # 8 KiB default; hard max 64 KiB
+  max_prometheus_query_range: 24h      # hard max 168h
+  max_prometheus_query_points: 11000   # default and hard max
+  max_prometheus_response_bytes: 1048576  # 1 MiB default; <= max_response_bytes and 8 MiB
+  prometheus_timeout: 10s              # default; bounded by the provider request_timeout
+  max_prometheus_concurrency: 4        # per provider; hard max 32
+
   # Default kubeconfig when a provider does not set its own. Precedence:
   #   provider.kubeconfig > server.kubeconfig > $KUBECONFIG > ~/.kube/config
   # A kubeconfig is TRUSTED configuration and is never supplied by a tool call.
@@ -102,6 +111,17 @@ providers:
     # a glob that matches nothing only warns. The values here are placeholders.
     contexts: ["*test*", "dev-play-cluster"]
     policy_read: false                          # default; see "self-inspect" below
+
+    # Prometheus datasources reachable through the Kubernetes service proxy
+    # (ADR 0017). The namespace, service and port are configuration, never tool
+    # input. The name is unique per provider and is matched by the policy
+    # "names" filters; the Service labels are matched by "labels" filters.
+    prometheus:
+      - name: main
+        namespace: monitoring
+        service: prometheus-k8s
+        port: 9090
+
     rules:
       # Deny everything in the test-secrets namespace. No capabilities means
       # "every capability"; a deny rule denies outright.
@@ -130,6 +150,8 @@ providers:
           - apps/deployments:list
           - core/pods/log:get              # subresource: explicit, never granted by "*"
           - secrets:get               # sensitive: only by explicit naming
+          - prometheus:query           # synthetic resource; explicit only (never "*")
+          - prometheus:range           # range queries need their own grant
           - "*:get"
           - "*:list"
 

@@ -41,12 +41,37 @@ const (
 	defaultMaxLogLines          = 500
 	defaultNamespaceMarkerLabel = "mcp-keel.io/noai"
 
+	// Prometheus query bounds (ADR 0017), with server defaults and hard
+	// upper bounds.
+	defaultMaxPrometheusQueryLength   = 8 << 10        // 8 KiB
+	defaultMaxPrometheusQueryRange    = 24 * time.Hour // 24 h
+	defaultMaxPrometheusQueryPoints   = 11000
+	defaultMaxPrometheusResponseBytes = 1 << 20 // 1 MiB
+	defaultPrometheusTimeout          = 10 * time.Second
+	defaultMaxPrometheusConcurrency   = 4
+
 	// maxListItemsLimit is the hard upper bound for server.max_list_items.
 	maxListItemsLimit = 1000
 	// maxLogBytesLimit is the hard upper bound for server.max_log_bytes.
 	maxLogBytesLimit = 16 << 20
 	// maxLogLinesLimit is the hard upper bound for server.max_log_lines.
 	maxLogLinesLimit = 10000
+
+	// maxPrometheusQueryLengthLimit is the hard upper bound for
+	// server.max_prometheus_query_length (64 KiB).
+	maxPrometheusQueryLengthLimit = 64 << 10
+	// maxPrometheusQueryRangeLimit is the hard upper bound for
+	// server.max_prometheus_query_range (7 d).
+	maxPrometheusQueryRangeLimit = 7 * 24 * time.Hour
+	// maxPrometheusQueryPointsLimit is the hard upper bound for
+	// server.max_prometheus_query_points.
+	maxPrometheusQueryPointsLimit = 11000
+	// maxPrometheusResponseBytesHardCap caps server.max_prometheus_response_bytes
+	// independently of server.max_response_bytes (8 MiB).
+	maxPrometheusResponseBytesHardCap = 8 << 20
+	// maxPrometheusConcurrencyLimit is the hard upper bound for
+	// server.max_prometheus_concurrency.
+	maxPrometheusConcurrencyLimit = 32
 )
 
 // LogLevel is a server log verbosity level.
@@ -101,6 +126,19 @@ type ServerConfig struct {
 	// MaxLogLines is the default and maximum number of tailLines for the logs
 	// tool.
 	MaxLogLines int
+	// MaxPrometheusQueryLength bounds a single Prometheus query string.
+	MaxPrometheusQueryLength int
+	// MaxPrometheusQueryRange bounds a range query's end-start span.
+	MaxPrometheusQueryRange Duration
+	// MaxPrometheusQueryPoints bounds a range query's point count.
+	MaxPrometheusQueryPoints int
+	// MaxPrometheusResponseBytes bounds a single Prometheus response body.
+	MaxPrometheusResponseBytes int
+	// PrometheusTimeout is the server-set Prometheus timeout parameter (and
+	// whole-request deadline).
+	PrometheusTimeout Duration
+	// MaxPrometheusConcurrency is the per-provider Prometheus query limit.
+	MaxPrometheusConcurrency int
 	// Kubeconfig is the default kubeconfig path (already expanded).
 	Kubeconfig string
 	// AdditionalSensitiveResources extends the built-in sensitive set.
@@ -134,6 +172,10 @@ type ProviderConfig struct {
 	// Redactions are the ordered content-redaction rules (ADR 0015); empty
 	// returns content as stored.
 	Redactions []RedactionConfig `yaml:"redactions"`
+	// Prometheus lists the in-cluster Prometheus datasources this provider may
+	// query (ADR 0017); empty disables the Prometheus tools for the provider.
+	// Datasources apply to every context of the provider.
+	Prometheus []PrometheusDatasource `yaml:"prometheus"`
 
 	// QPS, Burst, RequestTimeout, DiscoveryTimeout and DiscoveryCacheTTL
 	// override the server defaults when non-nil.
@@ -178,6 +220,12 @@ type rawServer struct {
 	MaxResponseBytes             *int               `yaml:"max_response_bytes"`
 	MaxLogBytes                  *int               `yaml:"max_log_bytes"`
 	MaxLogLines                  *int               `yaml:"max_log_lines"`
+	MaxPrometheusQueryLength     *int               `yaml:"max_prometheus_query_length"`
+	MaxPrometheusQueryRange      *Duration          `yaml:"max_prometheus_query_range"`
+	MaxPrometheusQueryPoints     *int               `yaml:"max_prometheus_query_points"`
+	MaxPrometheusResponseBytes   *int               `yaml:"max_prometheus_response_bytes"`
+	PrometheusTimeout            *Duration          `yaml:"prometheus_timeout"`
+	MaxPrometheusConcurrency     *int               `yaml:"max_prometheus_concurrency"`
 	Kubeconfig                   string             `yaml:"kubeconfig"`
 	AdditionalSensitiveResources []string           `yaml:"additional_sensitive_resources"`
 	NamespaceMarker              rawNamespaceMarker `yaml:"namespace_marker"`
@@ -267,6 +315,12 @@ func applyServerDefaults(raw *rawServer) ServerConfig {
 		MaxResponseBytes:             defaultMaxResponseBytes,
 		MaxLogBytes:                  defaultMaxLogBytes,
 		MaxLogLines:                  defaultMaxLogLines,
+		MaxPrometheusQueryLength:     defaultMaxPrometheusQueryLength,
+		MaxPrometheusQueryRange:      Duration(defaultMaxPrometheusQueryRange),
+		MaxPrometheusQueryPoints:     defaultMaxPrometheusQueryPoints,
+		MaxPrometheusResponseBytes:   defaultMaxPrometheusResponseBytes,
+		PrometheusTimeout:            Duration(defaultPrometheusTimeout),
+		MaxPrometheusConcurrency:     defaultMaxPrometheusConcurrency,
 		Kubeconfig:                   expandPath(raw.Kubeconfig),
 		AdditionalSensitiveResources: raw.AdditionalSensitiveResources,
 		NamespaceMarker: NamespaceMarkerConfig{
@@ -309,6 +363,24 @@ func applyServerDefaults(raw *rawServer) ServerConfig {
 	}
 	if raw.MaxLogLines != nil {
 		server.MaxLogLines = *raw.MaxLogLines
+	}
+	if raw.MaxPrometheusQueryLength != nil {
+		server.MaxPrometheusQueryLength = *raw.MaxPrometheusQueryLength
+	}
+	if raw.MaxPrometheusQueryRange != nil {
+		server.MaxPrometheusQueryRange = *raw.MaxPrometheusQueryRange
+	}
+	if raw.MaxPrometheusQueryPoints != nil {
+		server.MaxPrometheusQueryPoints = *raw.MaxPrometheusQueryPoints
+	}
+	if raw.MaxPrometheusResponseBytes != nil {
+		server.MaxPrometheusResponseBytes = *raw.MaxPrometheusResponseBytes
+	}
+	if raw.PrometheusTimeout != nil {
+		server.PrometheusTimeout = *raw.PrometheusTimeout
+	}
+	if raw.MaxPrometheusConcurrency != nil {
+		server.MaxPrometheusConcurrency = *raw.MaxPrometheusConcurrency
 	}
 	if server.NamespaceMarker.Label == "" {
 		server.NamespaceMarker.Label = defaultNamespaceMarkerLabel
@@ -387,6 +459,36 @@ func (s *ServerConfig) validate() error {
 		return fmt.Errorf("max_log_bytes: must be less than max_response_bytes (%d), got %d",
 			s.MaxResponseBytes, s.MaxLogBytes)
 	}
+	if s.MaxPrometheusQueryLength <= 0 || s.MaxPrometheusQueryLength > maxPrometheusQueryLengthLimit {
+		return fmt.Errorf("max_prometheus_query_length: must be in 1..%d, got %d",
+			maxPrometheusQueryLengthLimit, s.MaxPrometheusQueryLength)
+	}
+	if s.MaxPrometheusQueryRange <= 0 || s.MaxPrometheusQueryRange > Duration(maxPrometheusQueryRangeLimit) {
+		return fmt.Errorf("max_prometheus_query_range: must be > 0 and <= %s, got %s",
+			Duration(maxPrometheusQueryRangeLimit), s.MaxPrometheusQueryRange)
+	}
+	if s.MaxPrometheusQueryPoints <= 0 || s.MaxPrometheusQueryPoints > maxPrometheusQueryPointsLimit {
+		return fmt.Errorf("max_prometheus_query_points: must be in 1..%d, got %d",
+			maxPrometheusQueryPointsLimit, s.MaxPrometheusQueryPoints)
+	}
+	if s.MaxPrometheusResponseBytes <= 0 {
+		return fmt.Errorf("max_prometheus_response_bytes: must be > 0, got %d", s.MaxPrometheusResponseBytes)
+	}
+	if s.MaxPrometheusResponseBytes > s.MaxResponseBytes {
+		return fmt.Errorf("max_prometheus_response_bytes: must not exceed max_response_bytes (%d), got %d",
+			s.MaxResponseBytes, s.MaxPrometheusResponseBytes)
+	}
+	if s.MaxPrometheusResponseBytes > maxPrometheusResponseBytesHardCap {
+		return fmt.Errorf("max_prometheus_response_bytes: must not exceed %d, got %d",
+			maxPrometheusResponseBytesHardCap, s.MaxPrometheusResponseBytes)
+	}
+	if s.PrometheusTimeout <= 0 {
+		return fmt.Errorf("prometheus_timeout: must be > 0, got %s", s.PrometheusTimeout)
+	}
+	if s.MaxPrometheusConcurrency <= 0 || s.MaxPrometheusConcurrency > maxPrometheusConcurrencyLimit {
+		return fmt.Errorf("max_prometheus_concurrency: must be in 1..%d, got %d",
+			maxPrometheusConcurrencyLimit, s.MaxPrometheusConcurrency)
+	}
 	for i, resource := range s.AdditionalSensitiveResources {
 		if err := validateResourceSyntax(resource, false); err != nil {
 			return fmt.Errorf("additional_sensitive_resources[%d]: %w", i, err)
@@ -431,6 +533,16 @@ func (p *ProviderConfig) validate() error {
 		if err := p.Redactions[i].validate(); err != nil {
 			return fmt.Errorf("redactions[%d]: %w", i, err)
 		}
+	}
+	seenDatasources := make(map[string]struct{}, len(p.Prometheus))
+	for i := range p.Prometheus {
+		if err := p.Prometheus[i].validate(); err != nil {
+			return fmt.Errorf("prometheus[%d]: %w", i, err)
+		}
+		if _, duplicate := seenDatasources[p.Prometheus[i].Name]; duplicate {
+			return fmt.Errorf("prometheus[%d].name: duplicate datasource name %q", i, p.Prometheus[i].Name)
+		}
+		seenDatasources[p.Prometheus[i].Name] = struct{}{}
 	}
 	return nil
 }

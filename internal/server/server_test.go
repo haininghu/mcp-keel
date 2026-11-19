@@ -38,6 +38,11 @@ type fakeCluster struct {
 	logsData []byte
 	logsErr  error
 
+	promServiceLabels map[string]string
+	promServiceErr    error
+	promResp          *kube.PrometheusResponse
+	promErr           error
+
 	marked    map[string]bool
 	markerErr error
 
@@ -47,11 +52,16 @@ type fakeCluster struct {
 	listCalls         int
 	logsCalls         int
 	markerCalls       int
+	promServiceCalls  int
+	promQueryCalls    int
 	lastListLimit     int
 	lastListNamespace string
 	lastLogsNamespace string
 	lastLogsPod       string
 	lastLogOptions    kube.LogOptions
+	lastPromDs        kube.PrometheusDatasource
+	lastPromQuery     kube.PrometheusQueryParams
+	lastPromRange     kube.PrometheusRangeParams
 }
 
 func (f *fakeCluster) Canonicalize(_ context.Context, raw string) (policy.Resource, bool, error) {
@@ -143,6 +153,35 @@ func (f *fakeCluster) NamespaceMarked(_ context.Context, namespace, _ string) (b
 		return false, f.markerErr
 	}
 	return f.marked[namespace], nil
+}
+
+func (f *fakeCluster) PrometheusService(_ context.Context, ds kube.PrometheusDatasource) (map[string]string, error) {
+	f.promServiceCalls++
+	f.lastPromDs = ds
+	if f.promServiceErr != nil {
+		return nil, f.promServiceErr
+	}
+	return f.promServiceLabels, nil
+}
+
+func (f *fakeCluster) PrometheusQuery(_ context.Context, ds kube.PrometheusDatasource, params kube.PrometheusQueryParams) (*kube.PrometheusResponse, error) {
+	f.promQueryCalls++
+	f.lastPromDs = ds
+	f.lastPromQuery = params
+	if f.promErr != nil {
+		return nil, f.promErr
+	}
+	return f.promResp, nil
+}
+
+func (f *fakeCluster) PrometheusQueryRange(_ context.Context, ds kube.PrometheusDatasource, params kube.PrometheusRangeParams) (*kube.PrometheusResponse, error) {
+	f.promQueryCalls++
+	f.lastPromDs = ds
+	f.lastPromRange = params
+	if f.promErr != nil {
+		return nil, f.promErr
+	}
+	return f.promResp, nil
 }
 
 type fakeRegistry struct {

@@ -283,6 +283,29 @@ func TestLogsResponseBudgetTruncates(t *testing.T) {
 	}
 }
 
+func TestLogsResponseBudgetAccountsForEscaping(t *testing.T) {
+	cfg := logsAllowConfig([]string{"ns"})
+	cfg.Server.MaxResponseBytes = 300
+	cluster := baseCluster()
+	cluster.getObj = logPod("web-1", "ns", "main")
+	// HTML metacharacters are escaped to six-byte sequences by encoding/json, so
+	// the raw content must be cut further than the budget suggests.
+	cluster.logsData = []byte(strings.Repeat("<>&", 500))
+	env := newTestEnv(t, cfg, cluster)
+
+	out := env.callOK("logs", logsArgs("ns", "web-1", nil))
+	if out["truncated"] != true {
+		t.Fatalf("truncated = %v, want true", out["truncated"])
+	}
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("marshal envelope: %v", err)
+	}
+	if len(encoded) > cfg.Server.MaxResponseBytes {
+		t.Fatalf("serialized envelope = %d bytes, want <= %d", len(encoded), cfg.Server.MaxResponseBytes)
+	}
+}
+
 func TestLogsRedactionReplace(t *testing.T) {
 	cfg := logsAllowConfig([]string{"ns"})
 	cfg.Providers[0].Redactions = []config.RedactionConfig{{

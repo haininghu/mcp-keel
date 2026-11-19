@@ -65,14 +65,24 @@ func TestParseExampleConfig(t *testing.T) {
 		t.Errorf("provider[0].rules[1].capabilities[0] = %+v", c)
 	}
 	allow := testClusters.Rules[2].Capabilities
-	if len(allow) != 8 {
-		t.Fatalf("provider[0].rules[2] capabilities = %d, want 8", len(allow))
+	if len(allow) != 10 {
+		t.Fatalf("provider[0].rules[2] capabilities = %d, want 10", len(allow))
 	}
 	if got := allow[5]; got.Resource != "secrets" || got.Verb != policy.VerbGet || got.Wildcard {
 		t.Errorf("allow[5] = %+v, want explicit secrets:get", got)
 	}
-	if got := allow[6]; got.Resource != "*" || !got.Wildcard || got.VerbWildcard {
-		t.Errorf("allow[6] = %+v, want \"*:get\"", got)
+	if got := allow[6]; got.Resource != "prometheus" || got.Verb != policy.VerbQuery {
+		t.Errorf("allow[6] = %+v, want prometheus:query", got)
+	}
+	if got := allow[7]; got.Resource != "prometheus" || got.Verb != policy.VerbRange {
+		t.Errorf("allow[7] = %+v, want prometheus:range", got)
+	}
+	if got := allow[8]; got.Resource != "*" || !got.Wildcard || got.VerbWildcard {
+		t.Errorf("allow[8] = %+v, want \"*:get\"", got)
+	}
+	if ds := testClusters.Prometheus; len(ds) != 1 || ds[0].Name != "main" || ds[0].Namespace != "monitoring" ||
+		ds[0].Service != "prometheus-k8s" || ds[0].Port != 9090 {
+		t.Errorf("testClusters.Prometheus = %+v", ds)
 	}
 
 	prod := cfg.Providers[1]

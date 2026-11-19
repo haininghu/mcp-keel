@@ -72,6 +72,44 @@ func (s *Server) buildPolicy(ctx context.Context, provider string, cluster Clust
 		grantSpecs := make([]policy.CapabilityGrant, 0, len(rule.Capabilities))
 		for j := range rule.Capabilities {
 			grant := &rule.Capabilities[j]
+
+			// The synthetic Prometheus capabilities compile without discovery
+			// (ADR 0017). The config layer already restricted query/range to the
+			// exact resource "prometheus".
+			if grant.Verb == policy.VerbQuery || grant.Verb == policy.VerbRange {
+				grantSpecs = append(grantSpecs, policy.CapabilityGrant{
+					Resource: policy.PrometheusResource(),
+					Verb:     grant.Verb,
+					Filter:   grant.Filter,
+				})
+				continue
+			}
+
+			// A deny "prometheus:*" expands to the synthetic query and range
+			// grants plus, when discovery resolves "prometheus", to the CRD
+			// resource. The synthetic half survives partial or absent discovery.
+			if grant.VerbWildcard && grant.Resource == policy.PrometheusResourceName {
+				grantSpecs = append(grantSpecs,
+					policy.CapabilityGrant{
+						Resource: policy.PrometheusResource(), Verb: policy.VerbQuery, Filter: grant.Filter,
+					},
+					policy.CapabilityGrant{
+						Resource: policy.PrometheusResource(), Verb: policy.VerbRange, Filter: grant.Filter,
+					},
+				)
+				res, _, err := cluster.Canonicalize(ctx, grant.Resource)
+				if err == nil {
+					grantSpecs = append(grantSpecs, policy.CapabilityGrant{
+						Resource:     res,
+						VerbWildcard: true,
+						Filter:       grant.Filter,
+					})
+				} else if errors.Is(err, kube.ErrPartialDiscovery) {
+					partial = true
+				}
+				continue
+			}
+
 			compiled := policy.CapabilityGrant{
 				ResourceWildcard: grant.Wildcard,
 				Verb:             grant.Verb,

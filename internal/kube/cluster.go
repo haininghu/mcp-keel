@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"slices"
 	"sync"
 	"time"
@@ -29,8 +30,16 @@ type Cluster struct {
 	dynamic dynamic.Interface
 	// logs is a core-v1 REST client used for subresource streams that the
 	// dynamic client cannot read, such as pod logs.
-	logs   rest.Interface
-	source discoverySource
+	logs rest.Interface
+	// promHTTP is a redirect-rejecting HTTP client for the Prometheus service
+	// proxy. It reuses the same kubeconfig credentials (including exec-plugin
+	// output) and request timeout.
+	promHTTP *http.Client
+	// promSlots is the per-provider Prometheus concurrency sink; a send acquires
+	// a slot and a receive releases it. Nil means no limit (never the case in
+	// production, where the capacity is server.max_prometheus_concurrency).
+	promSlots chan struct{}
+	source    discoverySource
 
 	// credentialPlugin is the base name of the context's exec credential
 	// plugin command, or empty when the context uses no exec plugin. It is used

@@ -43,6 +43,12 @@ type provider struct {
 	cfg   *config.ProviderConfig
 	rules *clientcmd.ClientConfigLoadingRules
 
+	// promSlots is the per-provider Prometheus query concurrency sink
+	// (ADR 0017). Its capacity is server.max_prometheus_concurrency; every
+	// context of the provider shares it, so the limit is per provider, not per
+	// context.
+	promSlots chan struct{}
+
 	mu       sync.Mutex
 	clusters map[string]*Cluster
 }
@@ -73,9 +79,10 @@ func NewRegistry(cfg *config.Config, logger *slog.Logger) (*Registry, error) {
 			return nil, err
 		}
 		registry.providers[providerCfg.Name] = &provider{
-			cfg:      providerCfg,
-			rules:    rules,
-			clusters: make(map[string]*Cluster),
+			cfg:       providerCfg,
+			rules:     rules,
+			promSlots: make(chan struct{}, cfg.Server.MaxPrometheusConcurrency),
+			clusters:  make(map[string]*Cluster),
 		}
 	}
 	return registry, nil
@@ -164,6 +171,10 @@ func (r *Registry) buildCluster(p *provider, contextName string) (*Cluster, erro
 	if err != nil {
 		return nil, fmt.Errorf("provider %q: context %q: build log client: %w", p.cfg.Name, contextName, err)
 	}
+	promClient, err := newPrometheusHTTPClient(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("provider %q: context %q: build prometheus client: %w", p.cfg.Name, contextName, err)
+	}
 	discoveryConfig := rest.CopyConfig(restConfig)
 	discoveryConfig.Timeout = time.Duration(r.providerDiscoveryTimeout(p))
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(discoveryConfig)
@@ -175,6 +186,8 @@ func (r *Registry) buildCluster(p *provider, contextName string) (*Cluster, erro
 		context:          contextName,
 		dynamic:          dynamicClient,
 		logs:             logClient,
+		promHTTP:         promClient,
+		promSlots:        p.promSlots,
 		credentialPlugin: credentialPluginName(clientConfig, contextName),
 		source: discoveryClientSource{
 			client: discoveryClient,

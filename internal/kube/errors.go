@@ -42,6 +42,23 @@ var (
 	// carries only a safe classification, never plugin output (ADR 0007).
 	ErrCredentialsUnavailable = errors.New("kube: credentials unavailable")
 
+	// ErrPrometheusBusy reports that the per-provider Prometheus query
+	// concurrency limit was reached; the excess query is rejected immediately,
+	// never queued (ADR 0017).
+	ErrPrometheusBusy = errors.New("kube: prometheus concurrency limit reached")
+	// ErrPrometheusTimeout reports that a Prometheus query exceeded its
+	// server-set deadline (ADR 0017).
+	ErrPrometheusTimeout = errors.New("kube: prometheus query timed out")
+	// ErrPrometheusResponseTooLarge reports that a Prometheus response exceeded
+	// the body budget (ADR 0017).
+	ErrPrometheusResponseTooLarge = errors.New("kube: prometheus response too large")
+	// ErrPrometheusUpstream reports an upstream failure that must not expose its
+	// body: a 3xx, 5xx, non-JSON or API-server error (ADR 0017).
+	ErrPrometheusUpstream = errors.New("kube: prometheus upstream error")
+	// ErrPrometheusInvalid reports that Prometheus rejected the query; the
+	// sanitized errorType/error is carried by PrometheusError.
+	ErrPrometheusInvalid = errors.New("kube: prometheus query rejected")
+
 	// ErrUnknownProvider reports an unknown provider name.
 	ErrUnknownProvider = errors.New("kube: unknown provider")
 	// ErrUnknownContext reports a context outside a provider's contexts.
@@ -68,6 +85,31 @@ func (e *CredentialError) Error() string {
 
 // Unwrap returns the sentinel so errors.Is matches ErrCredentialsUnavailable.
 func (e *CredentialError) Unwrap() error { return ErrCredentialsUnavailable }
+
+// PrometheusError is the sanitized form of a Prometheus error response. It
+// carries only the errorType and the message, both stripped of control
+// characters and length-capped (ADR 0017); it never carries the raw upstream
+// body.
+type PrometheusError struct {
+	// ErrorType is the Prometheus errorType (for example "bad_data").
+	ErrorType string
+	// Message is the sanitized Prometheus error message (already capped).
+	Message string
+}
+
+// Error renders the safe classification without the raw upstream body.
+func (e *PrometheusError) Error() string {
+	if e.ErrorType == "" {
+		e.ErrorType = "unknown"
+	}
+	if e.Message == "" {
+		return fmt.Sprintf("kube: prometheus query failed (%s)", e.ErrorType)
+	}
+	return fmt.Sprintf("kube: prometheus query failed (%s): %s", e.ErrorType, e.Message)
+}
+
+// Unwrap returns the sentinel so errors.Is matches ErrPrometheusInvalid.
+func (e *PrometheusError) Unwrap() error { return ErrPrometheusInvalid }
 
 // isCredentialPluginError reports whether err came from a kubeconfig exec
 // credential plugin. client-go reports these as plain formatted errors (it

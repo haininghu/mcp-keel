@@ -41,6 +41,7 @@ func TestBuiltinSensitive(t *testing.T) {
 		{Group: "rbac.authorization.k8s.io", Name: "rolebindings"},
 		{Group: "rbac.authorization.k8s.io", Name: "clusterroles"},
 		{Group: "rbac.authorization.k8s.io", Name: "clusterrolebindings"},
+		PrometheusResource(),
 	}
 	if got := BuiltinSensitive(); !slices.Equal(got, want) {
 		t.Errorf("BuiltinSensitive() = %v, want %v", got, want)

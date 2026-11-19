@@ -1,6 +1,6 @@
 package policy
 
-// Verb is a read-only Kubernetes operation that the policy can authorize.
+// Verb is a read-only operation that the policy can authorize.
 type Verb string
 
 const (
@@ -8,9 +8,29 @@ const (
 	VerbGet Verb = "get"
 	// VerbList authorizes listing objects.
 	VerbList Verb = "list"
+	// VerbQuery authorizes a Prometheus instant query against the synthetic
+	// resource "prometheus" (ADR 0017). It is never valid with any other
+	// resource or with the resource wildcard.
+	VerbQuery Verb = "query"
+	// VerbRange authorizes a Prometheus range query against the synthetic
+	// resource "prometheus" (ADR 0017). It is never valid with any other
+	// resource or with the resource wildcard.
+	VerbRange Verb = "range"
 	// VerbWildcard matches every verb. It is only valid on deny rules (ADR 0011).
 	VerbWildcard Verb = "*"
 )
+
+// PrometheusResourceName is the synthetic resource identifier of the Prometheus
+// query tools (ADR 0017): the literal "prometheus". It is resolved only for the
+// query and range verbs and never through discovery.
+const PrometheusResourceName = "prometheus"
+
+// PrometheusResource returns the canonical synthetic resource of the Prometheus
+// query tools (ADR 0017). It names an operation whose wire mapping is fixed in
+// the tool, not a Kubernetes resource resolved through discovery.
+func PrometheusResource() Resource {
+	return Resource{Name: PrometheusResourceName}
+}
 
 // Effect is the outcome a matching rule produces.
 type Effect string
