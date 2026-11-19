@@ -42,6 +42,7 @@ capabilities and filters) overrides any `allow` rule that appears later.
 
 ## Behavior / limits
 
+- If the provider configures `redactions`, the returned object is redacted (ADR 0015; see `redaction.md`).
 - `metadata.managedFields` is always stripped; an object larger than `server.max_object_bytes` is reduced
   to `{apiVersion, kind, metadata}`, then (if still oversized) to `{name, namespace, uid}`, and flagged
   (`truncated`).

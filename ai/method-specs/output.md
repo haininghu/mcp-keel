@@ -2,8 +2,8 @@
 
 ## Purpose
 
-The output contract shared by `get` and `list`: the JSON envelope, object pruning, truncation and the
-response budget. It keeps output bounded and always valid JSON, and never discloses hidden-item counts.
+The output contract shared by `get`, `list` and `logs`: the JSON envelope, object pruning, truncation and
+the response budget. It keeps output bounded and always valid JSON, and never discloses hidden-item counts.
 
 ## Envelopes
 
@@ -34,6 +34,21 @@ response budget. It keeps output bounded and always valid JSON, and never disclo
 }
 ```
 
+`logs`:
+
+```json
+{
+  "provider": "test-clusters",
+  "context": "test-a",
+  "resource": "pods/log",
+  "namespace": "test-a",
+  "pod": "frontend-1",
+  "container": "app",
+  "content": "...",
+  "truncated": false
+}
+```
+
 | Field | Type | Notes |
 |-------|------|-------|
 | provider / context | string | Echo of the resolved request. |
@@ -42,6 +57,9 @@ response budget. It keeps output bounded and always valid JSON, and never disclo
 | name | string | `get` only. |
 | object | object | `get` only; the pruned Kubernetes object. |
 | items | []object | `list` only; the pruned Kubernetes objects. |
+| pod | string | `logs` only; the pod whose log was read. |
+| container | string | `logs` only; the resolved container name. |
+| content | string | `logs` only; the bounded, redacted log text. |
 | truncated | bool | See below. |
 
 ## Pruning
@@ -57,10 +75,14 @@ response budget. It keeps output bounded and always valid JSON, and never disclo
 - `get.truncated` is true when the object was reduced.
 - `list.truncated` is true when the list window or the response budget was exhausted, and/or an item was
   reduced.
+- `logs.truncated` is true when the log exceeded `server.max_log_bytes` or the response budget; the tool
+  requests `limitBytes = max_log_bytes + 1` to detect the former.
 
 ## Response budget
 
 - `server.max_response_bytes` (default 8 MiB) bounds the serialized response.
+- `server.max_log_bytes` (default 256 KiB) bounds `logs.content` and must be less than
+  `max_response_bytes`.
 - `list` adds items until the budget would be exceeded, then stops and sets `truncated`.
 - `get` reduces the object until the response fits.
 
@@ -68,9 +90,10 @@ response budget. It keeps output bounded and always valid JSON, and never disclo
 
 - Server credentials (kubeconfig tokens, certificates, exec plugin output) are never part of the output.
 - Configured **content redaction** (ADR 0015) runs after a successful allow, over the object's string
-  values, **before** pruning/reduction: `prune(managedFields)` -> redact -> reduce -> budget. It is
-  best-effort hygiene, not a confidentiality boundary; a cap breach fails closed (the object is not
-  returned). See `redaction.md`.
+  values and the log text, **before** pruning/reduction: for `get`/`list` `prune(managedFields)` ->
+  redact -> reduce -> budget; for `logs` redact -> budget. It is best-effort hygiene, not a confidentiality
+  boundary; a cap breach fails closed (`get`/`logs` answer "not found", `list` drops the item). See
+  `redaction.md`.
 
 ## Errors
 

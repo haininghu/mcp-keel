@@ -2,9 +2,9 @@
 
 A policy-governed [Model Context Protocol](https://modelcontextprotocol.io) server that gives AI agents
 controlled, **read-only** access to Kubernetes clusters. Access is **deny-by-default** and configured per
-cluster or group of clusters. The first iteration supports only the `get` and `list` verbs; mutating verbs
-(`create`, `update`, `patch`, `delete`), streaming operations (`logs`, `watch`, `exec`, `port-forward`) and
-remote transports are planned for later stages.
+cluster or group of clusters. The first iteration supports the `get` and `list` verbs plus a bounded `logs`
+tool for pod logs; mutating verbs (`create`, `update`, `patch`, `delete`), streaming operations (`watch`,
+`exec`, `port-forward`) and remote transports are planned for later stages.
 
 `mcp-keel` is the Kubernetes sibling of [`mcp-forj`](../mcp-forj), a policy-governed MCP server for code
 hosting providers. It reuses that project's authorization philosophy: a small, auditable, deny-by-default
@@ -33,12 +33,13 @@ The binary lands in `$(go env GOPATH)/bin/mcp-keel`; use that path (or an absolu
 path to a locally built binary) as `command` in the host configuration.
 `configs/config.yaml` is git-ignored and must never be committed. The server
 speaks MCP over stdio only and logs to stderr; there is no HTTP listener and no
-in-cluster service account. Once registered, ask the host to call the `get` or
-`list` tools, for example list pods in a namespace your policy allows.
+in-cluster service account. Once registered, ask the host to call the `get`, `list`
+or `logs` tools, for example list pods in a namespace your policy allows.
 
 ## Scope of v1
 
-- **Verbs:** `get` and `list` only.
+- **Verbs:** `get` and `list` only, plus the dedicated `logs` tool (a bounded `get` on `pods/log`, never a
+  stream).
 - **Transport:** MCP over **stdio** only. The server runs locally; there is no HTTP listener and no
   in-cluster service account support in v1.
 - **Backend:** one Kubernetes backend (client-go). A flat cluster abstraction, not a plugin/factory layer.
@@ -65,11 +66,28 @@ in-cluster service account. Once registered, ask the host to call the `get` or
 |-------------------------|---------------|-------------------------------------------------------------------|
 | `get`                   | see rule      | Fetch one object by provider, context, resource, namespace, name. |
 | `list`                  | see rule      | List objects, optionally by namespace, label selector, limit.     |
+| `logs`                  | see rule      | Fetch bounded log text for one pod (`pods/log:get`).              |
 | `list_configured_rules` | `policy_read` | List configured rules for providers that opt in. Config only.     |
 | `list_clusters`         | `policy_read` | List accessible provider/context names for opted-in providers.    |
 
-`get`/`list` are gated by the matching rule's `resource:verb` capabilities. See
+`get`, `list` and `logs` are gated by the matching rule's `resource:verb` capabilities. See
 [`ai/method-specs/`](ai/method-specs/README.md) for the exact contracts.
+
+## Pod logs
+
+The `logs` tool returns bounded log text for one pod. It always targets the canonical subresource `pods/log`
+with verb `get`, so the agent needs the explicit capability `pods/log:get`; an allow `*` never covers
+subresources. The tool accepts no resource identifier, so no other subresource (for example
+`services/proxy`) is reachable.
+
+The pod object is fetched first, because log text carries no labels; label filters, name filters and the
+namespace marker are evaluated against that pod, which is never returned. Denied, filter-excluded,
+marker-protected and missing pods all answer `not found`.
+
+- `container` is required when the pod has more than one container; a single-container pod defaults to it.
+- `tailLines` is capped by `server.max_log_lines` (default 500, hard max 10000); the returned text is capped
+  by `server.max_log_bytes` (default 262144), and `truncated` reports a cut.
+- There is no `follow`: the read is a single bounded GET, never a stream.
 
 ## Configuration (preview)
 
@@ -112,6 +130,9 @@ Key rules:
 - **`*` is fail-closed.** On an `allow` rule it never matches subresources or the built-in sensitive set
   (`secrets`, `serviceaccounts`, RBAC objects, `configmaps`); on a `deny` rule it matches everything.
   Sensitive resources must be named explicitly to be granted.
+- **Pod logs need an explicit grant.** `logs` uses the fixed capability `pods/log:get`; `*:get` never
+  matches subresources, so logs are never granted by a wildcard. A `deny` rule with `resource: "*"` or
+  `verb: "*"` does cover them.
 - **Cluster-scoped resources use the `""` namespace marker.** The literal `""` in a rule's `namespaces`
   selects cluster-scoped resources and is matched only by that literal entry; `*` and `**` never match
   `""`, so a namespace wildcard never leaks cluster-scoped access. There is no `cluster_scope` field and
@@ -130,7 +151,7 @@ Key rules:
 - The server's **own credentials** (kubeconfig tokens, certificates, exec plugin output) are never logged
   or returned; a config dump is redacted. A credential-plugin failure is surfaced only as a secret-free
   classification (plugin name plus a re-authentication hint), never as plugin output. Object content is
-  returned as stored (content redaction, for secrets and other resources, is planned for a later stage).
+  returned as stored unless the provider configures content redaction.
 - Authorization happens **before** the cluster call, and any error fails **closed**.
 - Listed objects are evaluated **per item** by the ordered rules (namespace + labels); hidden items are
   counted server-side only, never returned.
@@ -138,9 +159,12 @@ Key rules:
   the kubeconfig identity's RBAC; the policy never escalates beyond RBAC. See
   [`ai/threat-model.md`](ai/threat-model.md).
 - **Content redaction (optional).** `providers[].redactions` strips configured content (static text,
-  patterns, fields, specific env vars) from `get`/`list` results. It is best-effort hygiene, **not** a
-  confidentiality boundary; `deny` remains the control. See
+  patterns, fields, specific env vars) from `get`, `list` and `logs` results. It is best-effort hygiene,
+  **not** a confidentiality boundary; `deny` remains the control. See
   [`ai/adr/0015-content-redaction.md`](ai/adr/0015-content-redaction.md).
+- **Pod logs are bounded text.** The read is a single GET capped by `server.max_log_lines` and
+  `server.max_log_bytes`; there is no `follow`. Log text is untrusted content, and redaction applies only
+  its `replace` phase to it.
 
 ## Requirements
 
@@ -232,7 +256,7 @@ under [`ai/adr/`](ai/adr/) in the same commit.
 - [`AGENTS.md`](AGENTS.md) — repo map, conventions and authorization invariants.
 - [`ai/architecture.md`](ai/architecture.md) — components and the shared authorization pipeline.
 - [`ai/adr/`](ai/adr/) — architecture decision records (start at `0001`).
-- [`ai/method-specs/`](ai/method-specs/) — specifications of every MCP tool.
+- [`ai/method-specs/`](ai/method-specs/) — specifications of every MCP tool, including `logs`.
 - [`ai/config-reference.md`](ai/config-reference.md) — authoritative configuration field reference.
 - [`ai/threat-model.md`](ai/threat-model.md) — assets, adversary, trust boundaries and mitigations.
 - [`ai/testing.md`](ai/testing.md) — test layers and the bypass matrix.

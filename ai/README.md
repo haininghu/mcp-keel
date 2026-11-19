@@ -14,6 +14,8 @@ way it is, and the exact contract of every MCP tool. Prefer these documents over
 | `adr/`             | Architecture Decision Records: one decision per file, immutable once accepted. |
 | `method-specs/`    | Specification of each MCP tool and the shared authorization pipeline.    |
 
+The pod-log decision is `adr/0016-pod-log-access.md`; its tool contract is `method-specs/logs.md`.
+
 ## How to add
 
 - **A decision** (`adr/NNNN-short-title.md`): copy the Status/Context/Decision/Consequences shape from

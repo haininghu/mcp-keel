@@ -20,7 +20,8 @@ capabilities matches the request AND that capability's filters pass; the first a
 - **Resource canonicalisation**: the tool argument is resolved through discovery/RESTMapper to one
   canonical form used for BOTH policy matching and the API call.
 - **Label and marker checks**: object labels, and the optional namespace marker, are fail-closed.
-- **Content redaction**: per-provider, post-authorization, over `get`/`list` string values (ADR 0015).
+- **Content redaction**: per-provider, post-authorization, over `get`/`list` string values and the `logs`
+  text (ADR 0015, ADR 0016).
 - **Output shaping**: `managedFields` pruning, object reduction and the response budget (ADR 0013).
 
 Where a check cannot be performed (for example discovery fails, or an ambiguous resource name), the server
@@ -40,7 +41,7 @@ flowchart LR
   Agent -- "MCP tool calls (stdio)" --> Tools
   Tools --> Engine
   Tools --> Kube
-  Kube -- "get / list / discovery" --> API
+  Kube -- "get / list / logs / discovery" --> API
 ```
 
 | Package           | Responsibility                                                              |
@@ -48,10 +49,13 @@ flowchart LR
 | `internal/config` | YAML loading, defaults, validation, `Secret` redaction.                     |
 | `internal/policy` | Capabilities, firewall rule engine, marker-exemption flag. Backend-agnostic.|
 | `internal/kube`   | Cluster abstraction: kubeconfig loading, per-context clients, discovery.    |
+| `internal/redact` | Content redaction: field-path edits, literal/RE2 replace, hard caps.        |
 | `internal/server` | MCP tools, argument validation, limits, error mapping.                      |
 
 The policy package is pure (no I/O): it evaluates already-canonical resources and exposes the winning
 capability's namespace-marker exemption on the decision. The server applies the marker overlay.
+
+The server exposes five tools: `get`, `list`, `logs`, `list_configured_rules` and `list_clusters`.
 
 ## Authorization pipeline
 
@@ -105,6 +109,19 @@ keeps the pre-check an optimization only - it never grants, and it never over-de
 6. Return the items and a `truncated` flag for the caller's own window. The number of hidden items is
    never returned.
 
+## Logs flow
+
+1. Validate `provider`, `context`, `namespace`, `pod`, optional `container` and bounds.
+2. Canonicalise the fixed resource `pods/log` (fail-closed if the cluster does not expose it).
+3. Pre-check with the dimensions known now: a scope-only `deny` denies; otherwise proceed if some rule
+   could grant `pods/log:get`.
+4. Fetch the pod object. Log text has no labels, so the pod supplies the labels, the name and the container
+   list; the pod object itself is never returned.
+5. Full authorization with the pod's labels (and the namespace marker if enabled); the first applicable
+   rule wins.
+6. On deny, report **not found**; otherwise fetch the log with a bounded `tailLines` and `limitBytes`
+   (`max_log_bytes + 1`, to detect truncation), redact it and return the envelope.
+
 ## Why fail-closed
 
 - **Canonicalisation.** Kubernetes has many aliases (`deploy`, `deployments`, `Deployment`) and ambiguous
@@ -126,7 +143,9 @@ keeps the pre-check an optimization only - it never grants, and it never over-de
 - `adr/0013-output-truncation-and-limits.md` — output envelopes, truncation and the response budget.
 - `adr/0014-kubernetes-client-and-discovery.md` — client config, discovery and caching.
 - `adr/0015-content-redaction.md` — configured content redaction of tool results.
+- `adr/0016-pod-log-access.md` — pod logs as a fixed, bounded `pods/log:get` tool.
 - `method-specs/redaction.md` — the redaction contract (path grammar, phases, caps).
+- `method-specs/logs.md` — the pod-log contract (inputs, bounds, errors).
 - `config-reference.md` — the authoritative config field reference.
 - `method-specs/authorization.md` — the shared pipeline; `method-specs/output.md` — output contract.
 - `../AGENTS.md` — invariants; `../README.md` — user-facing overview.

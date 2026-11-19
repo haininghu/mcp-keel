@@ -15,8 +15,13 @@ catch bypasses. The policy engine is backend-agnostic, so most of it is testable
    configurations.
 4. **Server/tool tests** with a fake cluster (`k8s.io/client-go/dynamic/fake` plus a fake RESTMapper):
    per-item `list` filtering, the output envelope, truncation and the response budget, and error hygiene.
-5. **Race tests**: `go test -race ./...`.
-6. **Fail-closed boundary tests**: discovery failure, **partial** discovery failure, marker-check failure,
+5. **Pod-log tests**: the fixed `pods/log` canonicalisation, explicit-grant denial, the pod fetch that
+   supplies labels, container selection, `tailLines`/`max_log_bytes` bounds and `truncated`, and that no
+   `follow` input is accepted.
+6. **Redaction tests** (`internal/redact`): path grammar, phase order, `replace` interval union, the hard
+   caps, and placement over `get`, `list` and `logs`.
+7. **Race tests**: `go test -race ./...`.
+8. **Fail-closed boundary tests**: discovery failure, **partial** discovery failure, marker-check failure,
    and unknown/ambiguous resources.
 
 ## Bypass attempts and their required outcome
@@ -25,6 +30,10 @@ catch bypasses. The policy engine is backend-agnostic, so most of it is testable
 |---------|------------------|
 | deny on `apps/deployments`, request `deploy` / `Deployment` | denied (same canonical form) |
 | `*:get` | never reaches secrets, RBAC objects, config maps or subresources |
+| `*:get` for pod logs | denied: `logs` needs the explicit `pods/log:get` |
+| multi-container pod without `container` | validation error, no log text |
+| a `follow` argument on `logs` | rejected as unknown input; no stream |
+| a log larger than `max_log_bytes` | bounded text, `truncated: true` |
 | `namespaces: ["*"]` or `["**"]` | never matches cluster-scoped (`""`) |
 | broad `allow` above a specific `deny` | the deny is shadowed (documented; no warning in v1) |
 | namespace marker whose check fails | denied (fail-closed) |
@@ -33,11 +42,13 @@ catch bypasses. The policy engine is backend-agnostic, so most of it is testable
 | an oversized object | valid JSON, reduced, flagged `truncated` |
 | server credentials | never present in output or logs |
 | a redacted field path matches nothing | no-op, warned once (best-effort, not fail-closed) |
-| a redaction cap breached | object not returned (`get`: not found; `list`: dropped) |
+| a redaction cap breached | object not returned (`get`/`logs`: not found; `list`: item dropped) |
+| a redaction `fields` path against log text | no effect; only `replace` applies to text |
 | overlapping `replace` matches | the first matching rule's marker wins (deterministic) |
 | a plaintext secret value in `Secret.data` | NOT caught by `replace` (base64); only `fields: remove data` protects |
 | a redaction rule with an unresolvable/ambiguous resource | skipped + warned (capability logic) |
 | a redaction `replace`/`text` literal | never returned by `list_configured_rules`, never logged |
+| pod logs for a denied, filtered or missing pod | reported exactly like a non-existent pod |
 
 ## Commands
 

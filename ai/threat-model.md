@@ -8,7 +8,8 @@ the mitigations, and maps each mitigation to the invariants in `../AGENTS.md`.
 
 - **Cluster access**: the kubeconfig credentials (tokens, client certificates and keys, exec plugin
   output).
-- **Cluster data**: object contents, including Secrets (returned in v1 when explicitly granted).
+- **Cluster data**: object contents, including Secrets (returned in v1 when explicitly granted) and pod log
+  text (arbitrary application output).
 - **Policy integrity**: the configuration determines what the agent may see.
 - **Cluster availability**: the agent must not be able to overload the API server.
 
@@ -44,8 +45,10 @@ the mitigations, and maps each mitigation to the invariants in `../AGENTS.md`.
 | Existence is hidden | inv 11, ADR 0008 |
 | Server credentials never logged or returned | inv 12, ADR 0007 |
 | Output is bounded and quiet | inv 13, ADR 0013 |
+| Pod logs are a fixed `pods/log:get` read; an allow `*` never grants them | inv 7, ADR 0016 |
+| Pod logs are a bounded single GET, capped by line and byte limits; no `follow` | inv 13, ADR 0016 |
 | No authorization caches; discovery cache is fail-closed | inv 14, ADR 0014 |
-| Content redaction (best-effort; not a boundary) | inv 15, ADR 0015 |
+| Content redaction of `get`/`list`/`logs` (best-effort; not a boundary) | inv 15, ADR 0015 |
 
 ## Policy and RBAC are independent layers
 
@@ -57,17 +60,19 @@ the mitigations, and maps each mitigation to the invariants in `../AGENTS.md`.
 
 ## Prompt injection
 
-Object content (annotations, labels, ConfigMap and Secret data, later pod logs) can contain
-attacker-controlled text. The server returns it as data; the agent must treat it as untrusted. The policy
-bounds what the agent can read but cannot stop the agent from being influenced by what it reads. This is
-why the policy must be least-privilege and why output is bounded.
+Object content (annotations, labels, ConfigMap and Secret data, pod logs) can contain attacker-controlled
+text. The server returns it as data; the agent must treat it as untrusted. The policy bounds what the agent
+can read but cannot stop the agent from being influenced by what it reads. This is why the policy must be
+least-privilege and why output is bounded. Pod log text is arbitrary application output: it has no
+structure the policy can filter, so the `logs` tool only bounds its size.
 
 ## Non-goals (v1)
 
 - Not a **confidentiality control for object content**: content is returned as stored, including
-  `Secret.data` when `secrets:get` is explicitly granted. Configured content redaction (ADR 0015) can strip
-  known content, but it is **best-effort hygiene, not a boundary** - a typo'd field path, base64 secret
-  values or the same value in another field/resource are not caught. `deny` and the sensitive set remain
+  `Secret.data` when `secrets:get` is explicitly granted and pod log text when `pods/log:get` is granted.
+  Configured content redaction (ADR 0015) can strip known content, but it is **best-effort hygiene, not a
+  boundary** - a typo'd field path, base64 secret values or the same value in another field/resource are not
+  caught. `fields` cannot redact log text; only `replace` applies to it. `deny` and the sensitive set remain
   the confidentiality controls.
 - Not a replacement for Kubernetes RBAC.
 - Not hardened against a malicious local user with config/kubeconfig access.

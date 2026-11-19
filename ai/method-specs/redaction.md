@@ -2,14 +2,17 @@
 
 ## Purpose
 
-The post-authorization transformation that removes configured content from `get`/`list` results. It is
-**best-effort hygiene, not a confidentiality boundary** (ADR 0015); `deny` and the sensitive set remain the
-confidentiality controls.
+The post-authorization transformation that removes configured content from `get`, `list` and `logs` results.
+It is **best-effort hygiene, not a confidentiality boundary** (ADR 0015); `deny` and the sensitive set
+remain the confidentiality controls.
 
 ## Where it runs
 
-`prune(managedFields)` -> **redact** -> reduce -> budget (ADR 0013). It applies to the `get` object and to
-each `list` item, after a successful allow, and never to `list_configured_rules`/`list_clusters`.
+`prune(managedFields)` -> **redact** -> reduce -> budget (ADR 0013). It applies to the `get` object, to each
+`list` item and to the `logs` text, after a successful allow, and never to
+`list_configured_rules`/`list_clusters`.
+
+For `get`/`list` the walk is structural; for `logs` only the `replace` phase applies, over the whole text.
 
 ## Configuration
 
@@ -17,7 +20,7 @@ Rules live under `providers[].redactions` (see `config-reference.md`). Redaction
 
 ## Matching
 
-A rule matches an object when all of its present dimensions match (AND); omitted dimensions impose no
+A rule matches a result when all of its present dimensions match (AND); omitted dimensions impose no
 constraint:
 
 | Dimension    | Notes                                                                     |
@@ -30,11 +33,22 @@ constraint:
 `resources` follow the **capability** logic: an unresolvable or ambiguous resource is skipped and warned;
 partial discovery is handled as for capabilities. There is no core precedence and no `*`.
 
+For `logs`, a rule matches with the canonical resource `pods/log`, the pod's namespace, name and labels.
+Only `replace` can strip log text; `fields` has no target there.
+
+```yaml
+redactions:
+  - resources: ["pods/log"]      # log text of explicitly granted pods
+    replace:
+      - pattern: 'token=[A-Za-z0-9._-]+'
+```
+
 ## Actions
 
 ### `fields`
 
-`{path, action: remove|replace, marker?}` - structural edits to the object.
+`{path, action: remove|replace, marker?}` - structural edits to the object. `fields` applies to object
+structure only and has no effect on log text.
 
 Path grammar (minimal, validated at load):
 
@@ -73,16 +87,16 @@ Semantics:
 
 ## Caps and failure
 
-- Hardcoded `max_work_bytes` and `max_depth` bound the walk.
-- A breach fails closed: the object is not returned - `get` answers like a denied object ("not found"),
-  `list` drops the item and sets `truncated`. The reason is logged server-side only. Unredacted content is
-  never returned.
+- Hardcoded `MaxWorkBytes` (8 MiB of visited string bytes) and `MaxDepth` (64) bound the walk.
+- A breach fails closed: the content is not returned - `get`/`logs` answer like a denied object
+  ("not found"), `list` drops the item and sets `truncated`. The reason is logged server-side only.
+  Unredacted content is never returned.
 
 ## Limits (honest)
 
 - **Base64:** `Secret.data` is base64; `replace` cannot strip a plaintext secret value. Protect secrets
   structurally with `fields: {path: data, action: remove}` (and `stringData`).
-- **Not information-flow:** the same value in an unredacted field, resource, annotation or log is not
+- **Not information-flow:** the same value in an unredacted field, resource, annotation or log text is not
   caught. Redaction is pattern/field-based, not data-flow-based.
 - **Silent no-op:** a typo'd path or a schema change can fail to redact; a warning is logged once per rule,
   but there is no guarantee.

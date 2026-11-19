@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted. Supersedes the "content redaction is deferred" statements in ADR 0007 and ADR 0013.
+Accepted and implemented. Supersedes the "content redaction is deferred" statements in ADR 0007 and
+ADR 0013. Extended by ADR 0016: the `replace` phase also applies to `logs` text; `fields` does not.
 
 ## Context
 
@@ -17,10 +18,11 @@ Operators need a configured, resource-scoped way to remove such content.
 
 - Redaction is a **post-authorization transformation**: it runs only after a successful allow and the
   fetch, over the returned object(s), and it never authorizes or denies.
-- It applies to `get` (the object) and `list` (each item), never to `list_configured_rules`/`list_clusters`.
+- It applies to `get` (the object), `list` (each item) and `logs` (the whole text), never to
+  `list_configured_rules`/`list_clusters`.
 - Order: `prune(managedFields)` -> **redact** -> reduce (`{apiVersion,kind,metadata}` / `{name,namespace,
   uid}`) -> response budget. Redaction therefore runs before reduction, so `metadata` (which reduction
-  keeps) is already redacted.
+  keeps) is already redacted. For `logs` the order is redact -> budget; there is no prune or reduce.
 - Rules are configured **per provider**, next to the policy `rules` (`providers[].redactions`). Redaction
   is **opt-in**: a provider without `redactions` returns content as stored.
 
@@ -49,8 +51,9 @@ Operators need a configured, resource-scoped way to remove such content.
 
 - A structural walk over **string values only**; serialized JSON is never edited, and keys are never
   touched.
-- Hardcoded caps (`max_work_bytes`, `max_depth`); a breach fails closed - the object is not returned
-  (`get` -> "not found", `list` -> item dropped and `truncated` set). Unredacted content is never returned.
+- Hardcoded caps (`MaxWorkBytes` 8 MiB of visited string bytes, `MaxDepth` 64); a breach fails closed - the
+  content is not returned (`get`/`logs` -> "not found", `list` -> item dropped and `truncated` set).
+  Unredacted content is never returned.
 - Literal replacement text is **secret material**: never logged, never returned by `list_configured_rules`,
   redacted in config dumps.
 - **No object drop** (content-based exclusion is a policy `deny`, not a second engine) and **no dynamic

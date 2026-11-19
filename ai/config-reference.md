@@ -28,6 +28,8 @@ the `MCP_KEEL_CONFIG` environment variable.
 | `max_list_items` | int | no | `500` | `> 0`, `<= 1000` |
 | `max_object_bytes` | int | no | `1048576` | `> 0` |
 | `max_response_bytes` | int | no | `8388608` | `> 0` |
+| `max_log_bytes` | int | no | `262144` | `> 0`, `<= 16777216`, `< max_response_bytes` |
+| `max_log_lines` | int | no | `500` | `> 0`, `<= 10000` |
 | `kubeconfig` | string | no | `$KUBECONFIG` or `~/.kube/config` | path exists and is readable |
 | `additional_sensitive_resources` | []string | no | `[]` | resource names, canonicalised per request; additive only |
 | `namespace_marker` | object | no | disabled | see below |
@@ -79,6 +81,7 @@ A capability is either a scalar `resource:verb` or a single-key mapping `resourc
 capabilities:
   - core/pods:get
   - "apps/deployments:list"
+  - core/pods/log:get          # subresource: explicit, never covered by `*`
   - "*:get":
       labels:
         require: ["managed-by=platform"]
@@ -107,10 +110,15 @@ rejected (write `core/...` for a core resource whose name also exists in another
 The built-in sensitive set uses canonical names (core bare; RBAC as `rbac.authorization.k8s.io/...`).
 Additional entries are canonicalised per request; an ambiguous entry protects all matching groups.
 
+`pods/log` is a subresource. The `logs` tool requests it with verb `get`, so it needs the explicit capability
+`pods/log:get`; an `allow` `*` never matches subresources, while a `deny` rule with `*` as resource or verb
+does cover it.
+
 ## `providers[].redactions[]`
 
-Content redaction of `get`/`list` results (ADR 0015). It is best-effort hygiene, **not** a confidentiality
-boundary; `deny` and the sensitive set remain the controls. Rules are opt-in per provider.
+Content redaction of `get` objects, `list` items and the `logs` text (ADR 0015, ADR 0016). It is best-effort
+hygiene, **not** a confidentiality boundary; `deny` and the sensitive set remain the controls. Rules are
+opt-in per provider.
 
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
@@ -129,6 +137,8 @@ boundary; `deny` and the sensitive set remain the controls. Rules are opt-in per
   whole match.
 - The default marker is hardcoded (`[REDACTED]`); a per-entry `marker` overrides it.
 - All matching rules apply (union), `fields` before `replace`. Caps are hardcoded; a breach fails closed.
+- `fields` operates on object structure and has no effect on log text; `replace` applies to every string
+  value and to the whole log text.
 - The `text` literals are secret material: never returned by `list_configured_rules`, redacted in dumps.
 
 ## Glob semantics

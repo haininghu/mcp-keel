@@ -46,6 +46,7 @@ not-found.
 
 ## Behavior / limits
 
+- If the provider configures `redactions`, each returned item is redacted (ADR 0015; see `redaction.md`).
 - The number of hidden items is never returned.
 - If the caller's window or the response budget is exhausted, or an item was reduced, `truncated: true`;
   there are no `continue` tokens in v1.

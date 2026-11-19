@@ -9,14 +9,16 @@ exposes tools that let an AI agent inspect Kubernetes clusters, read-only, under
 
 - Transport: MCP over **stdio** only. All logging goes to **stderr**.
 - Backend: Kubernetes via client-go. A flat cluster abstraction (`internal/kube`), no plugin factory.
-- Verbs in v1: `get`, `list` only. Mutating and streaming verbs are out of scope.
+- Verbs in v1: `get`, `list` only, plus the `logs` tool (a bounded `get` on `pods/log`). Mutating and
+  streaming verbs are out of scope.
 - Authorization: **deny-by-default**, driven by a human-readable YAML config.
 - The design mirrors `../mcp-forj`; see its `ai/architecture.md` for the reference philosophy.
 
 ## Status
 
-v1 implementation in place: `internal/{config,policy,kube,server}` and `cmd/mcp-keel` build and pass the
-test suite. Treat this file and `ai/` as the contract; when behavior changes, update the matching ADR/spec.
+v1 implementation in place: `internal/{config,policy,kube,redact,server}` and `cmd/mcp-keel` build and pass
+the test suite. Treat this file and `ai/` as the contract; when behavior changes, update the matching
+ADR/spec.
 
 ## Planned repository map
 
@@ -26,6 +28,7 @@ test suite. Treat this file and `ai/` as the contract; when behavior changes, up
 | `internal/config`               | YAML config loading, defaults, validation, secret redaction.    |
 | `internal/policy`               | Capabilities, firewall rule engine, marker-exemption flag.      |
 | `internal/kube`                 | Cluster abstraction, kubeconfig loading, discovery/RESTMapper.  |
+| `internal/redact`               | Redaction walk: field paths, text/pattern replace, caps.        |
 | `internal/server`               | MCP server, tool handlers, argument validation, limits.         |
 | `ai/`                           | Architecture overview, ADRs, method specs.                      |
 | `configs/config.example.yaml`   | Documented example configuration.                               |
@@ -152,19 +155,24 @@ Authorization is the product. These rules are security-critical:
     output. Object content is returned as stored (ADR 0013).
 13. **Output is bounded and quiet.** `list` uses a bounded scan window and caps items; the whole response
     is bounded by `server.max_response_bytes`; `metadata.managedFields` is always stripped and an oversized
-    object is reduced to `{apiVersion, kind, metadata}`. The number of hidden items is never returned (only
-    a `truncated` flag for the caller's own window). See ADR 0013.
+    object is reduced to `{apiVersion, kind, metadata}`. `logs` is a single bounded GET, capped by
+    `server.max_log_lines` and `server.max_log_bytes`, and never a stream (`follow` is not exposed). The
+    number of hidden items is never returned (only a `truncated` flag for the caller's own window). See
+    ADR 0013 and ADR 0016.
 14. **No authorization caches.** Labels and marker state are resolved per request; discovery may use a
     short-lived per-`(provider, context)` cache (`discovery_cache_ttl`) with fail-closed invalidation on a
     `NoMatch` (ADR 0014).
 15. **Content redaction is best-effort hygiene, not a confidentiality boundary.** Redaction is opt-in per
-    provider (`providers[].redactions`), runs after a successful allow over `get`/`list` results only, and
-    never authorizes or denies. All matching rules apply (not first-match), phase-ordered (`fields` then
-    `replace`); a field path that matches nothing is a no-op. It walks string values only, after
-    `managedFields` pruning and before reduction. The default marker and the caps are hardcoded; a cap
-    breach fails closed (the object is never returned unredacted). Literal replacement text is secret
-    material: never logged, never returned by `list_configured_rules`, redacted in config dumps. `deny`
-    and the sensitive set remain the confidentiality controls (ADR 0015).
+    provider (`providers[].redactions`), runs after a successful allow over `get` objects, `list` items and
+    the `logs` text, and never authorizes or denies. All matching rules apply (not first-match),
+    phase-ordered (`fields` then `replace`); a field path that matches nothing is a no-op. `fields` operates
+    on object structure and has no effect on log text; `replace` applies to every string value and to the
+    whole log text. For `get`/`list`, redaction walks string values only, after `managedFields` pruning and
+    before reduction.
+    The default marker and the caps are hardcoded; a cap breach fails closed (`get`/`logs` answer
+    "not found", `list` drops the item and sets `truncated`), so unredacted content is never returned.
+    Literal replacement text is secret material: never logged, never returned by `list_configured_rules`,
+    redacted in config dumps. `deny` and the sensitive set remain the confidentiality controls (ADR 0015).
 
 ## Authorization flow
 
@@ -186,6 +194,7 @@ Authorization is the product. These rules are security-critical:
 - **Threat model**: `ai/threat-model.md`.
 - **Testing strategy**: `ai/testing.md`.
 - **Architecture decisions**: `ai/adr/` (start at `0001`).
+- **Pod logs**: `ai/method-specs/logs.md` and `ai/adr/0016-pod-log-access.md`.
 - **MCP tool/operation specifications**: `ai/method-specs/`.
 - **Docs index**: `ai/README.md`.
 
