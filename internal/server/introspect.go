@@ -50,6 +50,10 @@ type configuredProvider struct {
 	Provider   string                `json:"provider"`
 	Rules      []configuredRule      `json:"rules"`
 	Redactions []configuredRedaction `json:"redactions,omitempty"`
+	// Datasources lists the configured Prometheus datasource names in
+	// configuration order. Only names are exposed; the namespace, service and
+	// port are never exposed (ADR 0017).
+	Datasources []string `json:"datasources,omitempty"`
 }
 
 // configuredRedaction is one configured content-redaction rule. The literal
@@ -112,10 +116,15 @@ func (s *Server) handleListConfiguredRules(_ context.Context, _ *mcp.CallToolReq
 				Capabilities: configuredCapabilities(rule.Capabilities),
 			}
 		}
+		datasources := make([]string, 0, len(provider.Prometheus))
+		for i := range provider.Prometheus {
+			datasources = append(datasources, provider.Prometheus[i].Name)
+		}
 		out.Providers = append(out.Providers, configuredProvider{
-			Provider:   name,
-			Rules:      rules,
-			Redactions: configuredRedactions(provider.Redactions),
+			Provider:    name,
+			Rules:       rules,
+			Datasources: datasources,
+			Redactions:  configuredRedactions(provider.Redactions),
 		})
 	}
 	return jsonResult(out)

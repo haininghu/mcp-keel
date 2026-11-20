@@ -160,17 +160,17 @@ func (s *Server) MCPServer(version string) *mcp.Server {
 
 	mcp.AddTool(mcpSrv, &mcp.Tool{
 		Name:        "prometheus_query",
-		Description: "Evaluate a PromQL expression at a single instant against one configured Prometheus datasource, through the Kubernetes service proxy. Requires the prometheus:query capability; denied or missing datasources are reported identically as not found.",
+		Description: "Evaluate a PromQL expression at a single instant against one configured Prometheus datasource, through the Kubernetes service proxy. Requires the prometheus:query capability; denied or missing datasources are reported identically as not found. Valid datasource names are listed by list_configured_rules for providers with policy_read: true.",
 	}, s.handlePrometheusQuery)
 
 	mcp.AddTool(mcpSrv, &mcp.Tool{
 		Name:        "prometheus_query_range",
-		Description: "Evaluate a PromQL expression over a time range against one configured Prometheus datasource, through the Kubernetes service proxy. Requires the prometheus:range capability; denied or missing datasources are reported identically as not found.",
+		Description: "Evaluate a PromQL expression over a time range against one configured Prometheus datasource, through the Kubernetes service proxy. Requires the prometheus:range capability; denied or missing datasources are reported identically as not found. Valid datasource names are listed by list_configured_rules for providers with policy_read: true.",
 	}, s.handlePrometheusQueryRange)
 
 	mcp.AddTool(mcpSrv, &mcp.Tool{
 		Name:        "list_configured_rules",
-		Description: "List the configured access rules for providers that opt in with policy_read: true. Reports configuration only, never effective access or live object state. Other providers are omitted.",
+		Description: "List the configured access rules for providers that opt in with policy_read: true, including Prometheus datasource names (names only, never namespace/service/port). Reports configuration only, never effective access or live object state. Other providers are omitted.",
 	}, s.handleListConfiguredRules)
 
 	mcp.AddTool(mcpSrv, &mcp.Tool{

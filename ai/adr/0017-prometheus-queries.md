@@ -188,8 +188,10 @@ the agent cannot supply a resource, path, service, port or verb. The mapping `pr
 - Agents get metrics through the same policy, logging and redaction pipeline as Kubernetes objects.
 - The policy vocabulary grows by two resource-specific verbs; documentation and validation must state
   that verbs are resource-dependent.
-- `list_configured_rules` shows `prometheus:query` and `prometheus:range`; datasource service and port are
-  not exposed. `list_clusters` is unchanged.
+- `list_configured_rules` shows `prometheus:query` and `prometheus:range` and the datasource **names**
+  (the policy `name` dimension and the required `datasource` input), but never namespace, service or port.
+  `policy_read` therefore additionally discloses the names of datasources that no `names` filter lists;
+  `list_clusters` is unchanged.
 - The service proxy is an implementation detail. A future direct-URL transport can be added behind the
   same capabilities without changing the policy contract.
 - The threat model gains an outbound request path to a fixed API-server endpoint, a new data source

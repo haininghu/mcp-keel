@@ -101,7 +101,8 @@ The `prometheus_query` (instant) and `prometheus_query_range` (range) tools eval
 configured in-cluster Prometheus datasource, reached through the Kubernetes service proxy. Each provider
 opts in by listing datasources under `providers[].prometheus` (name, namespace, service, port). The tools
 accept no URL, path, service, port or timeout — only `provider`, `context`, `datasource`, `query` and either
-`time` or `start`/`end`/`step`.
+`time` or `start`/`end`/`step`. Valid `datasource` names are listed by `list_configured_rules` for
+providers with `policy_read: true` (names only, never namespace, service or port).
 
 Because Prometheus has no Kubernetes object model, the capability is a synthetic resource: `prometheus:query`
 and `prometheus:range` must be named explicitly — an allow `*` never reaches them, and `*:query`/`*:range`

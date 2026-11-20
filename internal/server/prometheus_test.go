@@ -521,19 +521,103 @@ func TestPrometheusRedactionCapBreachNotFound(t *testing.T) {
 	}
 }
 
-// TestListConfiguredRulesDoesNotExposeDatasourceServicePort verifies the
-// datasource service and port are never exposed (M3e).
-func TestListConfiguredRulesDoesNotExposeDatasourceServicePort(t *testing.T) {
+// TestListConfiguredRulesExposesDatasourceNamesOnly verifies list_configured_rules
+// exposes only the Prometheus datasource name (as a plain string), never
+// namespace, service or port.
+func TestListConfiguredRulesExposesDatasourceNamesOnly(t *testing.T) {
 	cfg := promConfig([]config.RuleConfig{promAllowRule([]string{"monitoring"}, policy.VerbQuery)})
 	cfg.Providers[0].PolicyRead = true
 	env := newTestEnv(t, cfg, baseCluster())
 
-	text := resultText(t, env.call("list_configured_rules", nil))
-	if strings.Contains(text, "prometheus-k8s") || strings.Contains(text, "9090") {
+	out := env.callOK("list_configured_rules", nil)
+	providers, _ := out["providers"].([]any)
+	if len(providers) != 1 {
+		t.Fatalf("providers = %d, want 1", len(providers))
+	}
+	provider, _ := providers[0].(map[string]any)
+
+	// The datasource name is exposed, as a plain string, in configuration order.
+	datasources, _ := provider["datasources"].([]any)
+	if len(datasources) != 1 {
+		t.Fatalf("datasources = %v, want exactly one name", provider["datasources"])
+	}
+	if name, ok := datasources[0].(string); !ok || name != "main" {
+		t.Fatalf("datasources[0] = %v (%T), want plain string \"main\"", datasources[0], datasources[0])
+	}
+
+	// namespace, service and port are never exposed.
+	for _, key := range []string{"namespace", "service", "port"} {
+		if _, present := provider[key]; present {
+			t.Errorf("provider object leaked key %q", key)
+		}
+	}
+	if text := resultText(t, env.call("list_configured_rules", nil)); strings.Contains(text, "prometheus-k8s") || strings.Contains(text, "9090") {
 		t.Fatalf("list_configured_rules leaked datasource service/port: %s", text)
 	}
-	if !strings.Contains(text, `"verb":"query"`) || !strings.Contains(text, `"resource":"prometheus"`) {
-		t.Fatalf("list_configured_rules did not show prometheus:query verbatim: %s", text)
+
+	// prometheus:query remains visible verbatim.
+	rules, _ := provider["rules"].([]any)
+	if len(rules) != 1 {
+		t.Fatalf("rules = %v, want 1", provider["rules"])
+	}
+	rule, _ := rules[0].(map[string]any)
+	caps, _ := rule["capabilities"].([]any)
+	if len(caps) != 1 {
+		t.Fatalf("capabilities = %v, want 1", rule["capabilities"])
+	}
+	capability, _ := caps[0].(map[string]any)
+	if capability["resource"] != "prometheus" || capability["verb"] != "query" {
+		t.Errorf("capability = %v, want prometheus:query", capability)
+	}
+}
+
+// TestListConfiguredRulesDatasourceNamesInConfigOrder verifies datasource names
+// are emitted in configuration order, without sorting.
+func TestListConfiguredRulesDatasourceNamesInConfigOrder(t *testing.T) {
+	cfg := promConfig([]config.RuleConfig{promAllowRule([]string{"monitoring"}, policy.VerbQuery)})
+	cfg.Providers[0].PolicyRead = true
+	cfg.Providers[0].Prometheus = []config.PrometheusDatasource{
+		{Name: "zeta", Namespace: "monitoring", Service: "prom-zeta", Port: 9090},
+		{Name: "main", Namespace: "monitoring", Service: "prom-main", Port: 9091},
+	}
+	env := newTestEnv(t, cfg, baseCluster())
+
+	out := env.callOK("list_configured_rules", nil)
+	provider, _ := out["providers"].([]any)[0].(map[string]any)
+	datasources, _ := provider["datasources"].([]any)
+	if len(datasources) != 2 {
+		t.Fatalf("datasources = %v, want 2", provider["datasources"])
+	}
+	if datasources[0] != "zeta" || datasources[1] != "main" {
+		t.Errorf("datasources = %v, want [zeta main] in configuration order", datasources)
+	}
+}
+
+// TestListConfiguredRulesOmitsProviderWithoutPolicyReadDespiteDatasources
+// verifies a provider with datasources but policy_read: false is not listed.
+func TestListConfiguredRulesOmitsProviderWithoutPolicyReadDespiteDatasources(t *testing.T) {
+	cfg := promConfig([]config.RuleConfig{promAllowRule([]string{"monitoring"}, policy.VerbQuery)})
+	// policy_read stays false; the datasource must not make the provider visible.
+	env := newTestEnv(t, cfg, baseCluster())
+
+	out := env.callOK("list_configured_rules", nil)
+	providers, _ := out["providers"].([]any)
+	if len(providers) != 0 {
+		t.Fatalf("providers = %d, want 0 (policy_read: false hides the provider)", len(providers))
+	}
+}
+
+// TestListConfiguredRulesOmitsEmptyDatasources verifies a policy_read provider
+// without datasources omits the datasources field entirely.
+func TestListConfiguredRulesOmitsEmptyDatasources(t *testing.T) {
+	cfg := baseConfig([]config.RuleConfig{allowRule([]string{"ns"}, grant("pods", policy.VerbGet))})
+	cfg.Providers[0].PolicyRead = true
+	env := newTestEnv(t, cfg, baseCluster())
+
+	out := env.callOK("list_configured_rules", nil)
+	provider, _ := out["providers"].([]any)[0].(map[string]any)
+	if _, present := provider["datasources"]; present {
+		t.Error("datasources must be omitted when the provider has no datasources")
 	}
 }
 

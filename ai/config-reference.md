@@ -91,8 +91,9 @@ prometheus:
 
 The namespace, service and port are configuration, never tool input; there is no URL, path, port or
 timeout argument on the tools. The datasource `name` is the policy `name` dimension and `names`-filter
-key; the Service labels are the policy `labels` dimension. Datasource service and port are never exposed
-by `list_configured_rules`.
+key; the Service labels are the policy `labels` dimension. Datasource **names** are exposed by
+`list_configured_rules` (for providers with `policy_read: true`); namespace, service and port are never
+exposed by that tool.
 
 ## `providers[].rules[]`
 

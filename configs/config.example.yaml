@@ -116,6 +116,8 @@ providers:
     # (ADR 0017). The namespace, service and port are configuration, never tool
     # input. The name is unique per provider and is matched by the policy
     # "names" filters; the Service labels are matched by "labels" filters.
+    # The names are emitted by list_configured_rules when policy_read: true
+    # (never namespace, service or port).
     prometheus:
       - name: main
         namespace: monitoring
@@ -248,7 +250,8 @@ providers:
   # ---------------------------------------------------------------------------
   # Policy introspection. A provider with "policy_read: true" lets the agent
   # call list_configured_rules and list_clusters for it. This discloses the
-  # CONFIGURED rules and context names only, never effective access.
+  # CONFIGURED rules, Prometheus datasource names (never namespace/service/port)
+  # and context names only, never effective access.
   # ---------------------------------------------------------------------------
   - name: self-inspect
     contexts: ["*"]

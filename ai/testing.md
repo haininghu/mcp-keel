@@ -52,7 +52,7 @@ catch bypasses. The policy engine is backend-agnostic, so most of it is testable
 | `*:query` / `*:range` in config | rejected at load (query/range only with exact `prometheus`) |
 | `*:get` or `prometheus:get` for a query | denied: only `prometheus:query`/`:range` grant the tools |
 | `prometheus:query` for a `prometheus:range` request | denied: query and range are separate grants |
-| `prometheus` datasource service/port via `list_configured_rules` | not exposed (configuration only) |
+| `prometheus` datasource via `list_configured_rules` | names exposed; namespace/service/port not exposed |
 | a `deny prometheus:*` without a CRD / under partial discovery | still denies the synthetic query/range half |
 | Prometheus `timeout`/`stats`/`url`/`path`/`port`/`limit` inputs | rejected as unknown input; server sets timeout |
 | a query with control characters or above the length cap | validation error, no API call |

@@ -22,14 +22,19 @@ None.
 1. Iterate the configured providers.
 2. Include a provider only when `policy_read: true`.
 3. Emit each rule's scope (`namespaces`), `effect` and configured capabilities with their filters.
-4. Emit the provider's redaction structure (resources, scopes, field paths, patterns) but **never** the
+4. Emit the provider's Prometheus datasource **names** (`providers[].prometheus[].name`), in configuration
+   order. Namespace, service and port are never emitted (ADR 0017).
+5. Emit the provider's redaction structure (resources, scopes, field paths, patterns) but **never** the
    `text` literals: they are secret material (ADR 0015).
-5. Never emit effective access, object state, tokens or kubeconfig contents. The `policy_read` flag and
+6. Never emit effective access, object state, tokens or kubeconfig contents. The `policy_read` flag and
    `kubeconfig` paths are configuration plumbing and are not part of the output either.
 
 ## Behavior / limits
 
 - Output is sorted by provider name; rule order within a provider is preserved.
+- Datasource names are emitted in configuration order (the order in `providers[].prometheus`).
+- The datasource `datasources` field is a flat list of plain strings and is omitted when the provider has
+  no datasources.
 - The response contains only configuration as written, not the result of canonicalisation.
 
 ## Errors
